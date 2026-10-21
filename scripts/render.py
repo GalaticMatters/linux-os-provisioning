@@ -4,7 +4,8 @@
 Writes compose.yaml, caddy/Caddyfile, caddy/site/index.html, dns/records.conf,
 and dns/hosts.example. Defaults are 30 Kali desktops and 30 Ubuntu SSH servers.
 The example LAN is 10.0.253.0/24. The server and gateway are 10.0.253.1.
-ubuntu01 is 10.0.253.2 and ubuntu30 is 10.0.253.31. Kali names resolve to
+10.0.253.2 through 10.0.253.10 are reserved and are not assigned to Ubuntu.
+ubuntu01 is 10.0.253.11 and ubuntu30 is 10.0.253.40. Kali names resolve to
 10.0.253.1 and stay behind Caddy; they are not placed on the macvlan.
 Re-run after changing KALI_COUNT, UBUNTU_COUNT, UBUNTU_IP_START, SERVER_IP, or BASE_DOMAIN.
 """
@@ -118,6 +119,9 @@ def ubuntu_ips(
         gateway,
         server,
     }
+    # 10.0.253.2 through 10.0.253.10 are reserved. Do not assign them to Ubuntu.
+    for octet in range(2, 11):
+        reserved.add(ipaddress.IPv4Address(f"10.0.253.{octet}"))
     chosen: list[str] = []
     for offset in range(count):
         try:
@@ -129,7 +133,8 @@ def ubuntu_ips(
                 "Ubuntu addresses do not fit. "
                 f"Start {start}, count {count}, subnet {subnet}, "
                 f"gateway {gateway}, SERVER_IP {server}. "
-                "Pick a free UBUNTU_IP_START inside LAN_SUBNET that is not the gateway or SERVER_IP."
+                "Pick a free UBUNTU_IP_START inside LAN_SUBNET that is not the gateway, "
+                "SERVER_IP, or 10.0.253.2 through 10.0.253.10."
             )
         chosen.append(str(addr))
     return chosen

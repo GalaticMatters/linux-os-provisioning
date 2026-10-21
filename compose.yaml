@@ -147,152 +147,152 @@ services:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.2
+        ipv4_address: 10.0.253.11
   ubuntu02:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.3
+        ipv4_address: 10.0.253.12
   ubuntu03:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.4
+        ipv4_address: 10.0.253.13
   ubuntu04:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.5
+        ipv4_address: 10.0.253.14
   ubuntu05:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.6
+        ipv4_address: 10.0.253.15
   ubuntu06:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.7
+        ipv4_address: 10.0.253.16
   ubuntu07:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.8
+        ipv4_address: 10.0.253.17
   ubuntu08:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.9
+        ipv4_address: 10.0.253.18
   ubuntu09:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.10
+        ipv4_address: 10.0.253.19
   ubuntu10:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.11
+        ipv4_address: 10.0.253.20
   ubuntu11:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.12
+        ipv4_address: 10.0.253.21
   ubuntu12:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.13
+        ipv4_address: 10.0.253.22
   ubuntu13:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.14
+        ipv4_address: 10.0.253.23
   ubuntu14:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.15
+        ipv4_address: 10.0.253.24
   ubuntu15:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.16
+        ipv4_address: 10.0.253.25
   ubuntu16:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.17
+        ipv4_address: 10.0.253.26
   ubuntu17:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.18
+        ipv4_address: 10.0.253.27
   ubuntu18:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.19
+        ipv4_address: 10.0.253.28
   ubuntu19:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.20
+        ipv4_address: 10.0.253.29
   ubuntu20:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.21
+        ipv4_address: 10.0.253.30
   ubuntu21:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.22
+        ipv4_address: 10.0.253.31
   ubuntu22:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.23
+        ipv4_address: 10.0.253.32
   ubuntu23:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.24
+        ipv4_address: 10.0.253.33
   ubuntu24:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.25
+        ipv4_address: 10.0.253.34
   ubuntu25:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.26
+        ipv4_address: 10.0.253.35
   ubuntu26:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.27
+        ipv4_address: 10.0.253.36
   ubuntu27:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.28
+        ipv4_address: 10.0.253.37
   ubuntu28:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.29
+        ipv4_address: 10.0.253.38
   ubuntu29:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.30
+        ipv4_address: 10.0.253.39
   ubuntu30:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 10.0.253.31
+        ipv4_address: 10.0.253.40
   caddy:
     image: caddy:2.11.7-alpine
     restart: unless-stopped

@@ -15,7 +15,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `PARENT_IFACE` | Required. Macvlan parent for Ubuntu. Must be the interface which already has `10.0.253.1` (`br-ex` or `eno1`). It must allow more than one MAC address. |
 | `LAN_SUBNET` | `10.0.253.0/24`, the subnet on that interface. |
 | `LAN_GATEWAY` | `10.0.253.1`, this server. Same address as `SERVER_IP`. |
-| `UBUNTU_IP_START` | `10.0.253.2`, the address of `ubuntu01`. `ubuntu30` is `10.0.253.31`. Must sit inside `LAN_SUBNET`. Do not use `10.0.253.1` for a box. That address is the server. |
+| `UBUNTU_IP_START` | `10.0.253.11`, the address of `ubuntu01`. `ubuntu30` is `10.0.253.40`. Must sit inside `LAN_SUBNET`. `10.0.253.2` through `10.0.253.10` are reserved. Do not use `10.0.253.1` for a box. That address is the server. |
 | `SERVER_IP` | `10.0.253.1`, this server’s LAN address. Kali names and the bundled DNS use it. |
 | `TZ` | Timezone of the 02:00 reset. A tz database name (`UTC`, `America/New_York`), not a UTC offset. The host clock’s timezone is not used. |
 | `SSH_USER` | Account on every Ubuntu server. Not `root`. |
@@ -29,7 +29,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | --- | --- | --- |
 | `https://cybersecurity.lan` | `10.0.253.1` (`SERVER_IP`) | List of Kali desktops, and the SSH names |
 | `https://kali01.cybersecurity.lan` … `kali30.cybersecurity.lan` | `10.0.253.1` (`SERVER_IP`) | Kali KDE in the browser. Two-digit names. Behind Caddy on the server, not on macvlan. |
-| `ssh student@ubuntu01.cybersecurity.lan` … `ubuntu30` | `10.0.253.2` … `10.0.253.31` | Ubuntu Server, one macvlan address each, SSH port 22 only |
+| `ssh student@ubuntu01.cybersecurity.lan` … `ubuntu30` | `10.0.253.11` … `10.0.253.40` | Ubuntu Server, one macvlan address each, SSH port 22 only |
 
 Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. They stay behind Caddy on the server. Do not put Kali on macvlan. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
 
@@ -85,19 +85,19 @@ The Docker host cannot reach those addresses. The kernel does not deliver packet
 docker exec -it ubuntu01 bash
 ```
 
-Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, and not in the Ubuntu range. This is not created for you:
+Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, and not in the Ubuntu range. This is not created for you:
 
 ```sh
 # PARENT_IFACE is the interface which already has 10.0.253.1 (br-ex or eno1).
 sudo ip link add cybersecurity-shim link "$PARENT_IFACE" type macvlan mode bridge
 sudo ip addr add 10.0.253.100/32 dev cybersecurity-shim
 sudo ip link set cybersecurity-shim up
-for i in $(seq 2 31); do
+for i in $(seq 11 40); do
   sudo ip route add "10.0.253.${i}/32" dev cybersecurity-shim
 done
 ```
 
-`10.0.253.100` is only an example shim address: not the gateway, not `10.0.253.1`, and not in the Ubuntu range `10.0.253.2`–`10.0.253.31`. The parent has to accept the extra MACs (promiscuous mode, no port security, not typical Wi-Fi). Cloud interfaces often drop them, and then the containers stay unreachable from the LAN.
+`10.0.253.100` is only an example shim address: not the gateway, not `10.0.253.1`, not in the reserved range `10.0.253.2`–`10.0.253.10`, and not in the Ubuntu range `10.0.253.11`–`10.0.253.40`. The parent has to accept the extra MACs (promiscuous mode, no port security, not typical Wi-Fi). Cloud interfaces often drop them, and then the containers stay unreachable from the LAN.
 
 `PARENT_IFACE`, `LAN_SUBNET`, and `LAN_GATEWAY` are read when Compose starts. Changing only the NIC does not require a re-render. The Ubuntu addresses are written into `compose.yaml` and `dns/records.conf`, so they still have to fall inside the subnet you set.
 
@@ -138,7 +138,7 @@ dig @10.0.253.1 kali01.cybersecurity.lan +short
 dig @10.0.253.1 ubuntu01.cybersecurity.lan +short
 ```
 
-The first should print `10.0.253.1`. The second should print `10.0.253.2` (`ubuntu01`). `ubuntu30` is `10.0.253.31`.
+The first should print `10.0.253.1`. The second should print `10.0.253.11` (`ubuntu01`). `ubuntu30` is `10.0.253.40`.
 
 `SERVER_IP` is substituted when dnsmasq starts. Ubuntu addresses are already written in [`dns/records.conf`](dns/records.conf).
 
