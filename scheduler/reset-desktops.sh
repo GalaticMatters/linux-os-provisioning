@@ -1,9 +1,10 @@
 #!/bin/sh
-# Recreate every desktop labeled desktop.lan.reset=true and restart Caddy.
-# Homes are tmpfs, so recreate wipes them. Recreate also drops the container
-# writable layer (packages installed outside /config). Caddy's named volumes
-# stay, so the internal CA does not change. Caddy is restarted, not recreated,
-# so it re-resolves desktop DNS without remounting its config.
+# Recreate every service labeled fleet.reset=true, then restart Caddy.
+# Kali homes are tmpfs. Ubuntu keeps SSH host keys and accounts on the
+# container writable layer. Recreate throws that layer away, so both fleets
+# come back empty. The entrypoint writes the SSH user again from .env.
+# Caddy's named volumes stay, so the internal CA does not change. Caddy is
+# restarted, not recreated, so it re-resolves Kali container addresses.
 set -eu
 
 log() {
@@ -24,7 +25,7 @@ if [ "${RESET_INNER:-}" != "1" ]; then
     exit 1
   fi
   log "using project directory $host_src"
-  exec docker run --rm --name desktop-lan-reset \
+  exec docker run --rm --name cybersecurity-reset \
     -e RESET_INNER=1 \
     -e TZ \
     -v /var/run/docker.sock:/var/run/docker.sock \
@@ -43,12 +44,12 @@ fi
 services=$(docker compose -f "$compose_file" config --format json | jq -r '
   .services
   | to_entries[]
-  | select((.value.labels // {})["desktop.lan.reset"] == "true")
+  | select((.value.labels // {})["fleet.reset"] == "true")
   | .key
 ')
 
 if [ -z "$services" ]; then
-  log "no services labeled desktop.lan.reset=true"
+  log "no services labeled fleet.reset=true"
   exit 1
 fi
 

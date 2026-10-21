@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cybersecurity LAN</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #121410;
+      --card: #1c2018;
+      --text: #f3efe2;
+      --muted: #b7b39f;
+      --line: #3a4030;
+      --accent: #d6f25a;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #2a3318 0%, transparent 55%),
+        var(--bg);
+      color: var(--text);
+      font: 1.05rem/1.5 ui-sans-serif, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(52rem, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 3.5rem 0 3rem;
+    }
+    p { margin: 0; }
+    .kicker {
+      margin: 0 0 0.6rem;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 650;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0 0 0.75rem;
+      font-family: ui-serif, Georgia, "Iowan Old Style", serif;
+      font-size: clamp(2.2rem, 6vw, 3.2rem);
+      font-weight: 560;
+      letter-spacing: -0.03em;
+      line-height: 0.95;
+    }
+    .lead { max-width: 40rem; color: var(--muted); }
+    ul {
+      list-style: none;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+      gap: 0.5rem;
+      margin: 1.75rem 0 0;
+      padding: 0;
+    }
+    a.desk {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.75rem;
+      min-height: 2.75rem;
+      padding: 0.65rem 0.75rem;
+      background: var(--card);
+      color: inherit;
+      text-decoration: none;
+    }
+    a.desk:hover .os,
+    a.desk:focus-visible .os { color: var(--accent); }
+    a.desk:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .os { font-variant-numeric: tabular-nums; }
+    .host {
+      color: var(--muted);
+      font-size: 0.82rem;
+      overflow-wrap: anywhere;
+    }
+    .note {
+      margin-top: 1.5rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    code { color: var(--text); }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="kicker">LAN lab</p>
+    <h1>Cybersecurity LAN</h1>
+    <p class="lead">Kali desktops in the browser. Each name on this page is one container, wiped at 02:00.</p>
+    <ul>
+%%KALI_LINKS%%
+    </ul>
+    <p class="note">%%SSH_BLURB%%</p>
+    <p class="note">Sessions are recreated at 02:00 in the configured timezone. Kali home directories are memory only. Ubuntu disks, including SSH host keys, are wiped by the same recreate. There is no sign-in on the Kali pages.</p>
+  </main>
+  <script>
+    (function () {
+      var host = location.hostname;
+      var port = location.port ? ":" + location.port : "";
+      var links = document.querySelectorAll("a[data-name]");
+      for (var i = 0; i < links.length; i++) {
+        var name = links[i].getAttribute("data-name") + "." + host;
+        links[i].href = "https://" + name + port + "/";
+        links[i].querySelector(".host").textContent = name;
+      }
+      var zones = document.querySelectorAll(".zone");
+      for (var j = 0; j < zones.length; j++) zones[j].textContent = host;
+    })();
+  </script>
+</body>
+</html>

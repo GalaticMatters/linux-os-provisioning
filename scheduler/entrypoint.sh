@@ -10,5 +10,5 @@ if [ ! -f "/usr/share/zoneinfo/$TZ" ]; then
   exit 1
 fi
 
-echo "Desktop reset cron is 02:00 $(date +%Z) ($TZ)"
+echo "Fleet reset cron is 02:00 $(date +%Z) ($TZ)"
 exec supercronic -passthrough-logs /etc/crontab

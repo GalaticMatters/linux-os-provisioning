@@ -12,10 +12,11 @@ rebind-localhost-ok
 clear-on-reload
 log-facility=-
 
-# Names outside the desktop zone.
+# Names outside this zone.
 server=__UPSTREAM_DNS_1__
 server=__UPSTREAM_DNS_2__
 
-# The apex and every subdomain. Not forwarded upstream.
+# Do not forward the zone. Records are exact names, not a wildcard address=,
+# because a wildcard would send the Ubuntu servers to the Kali server IP.
 local=/__BASE_DOMAIN__/
-address=/__BASE_DOMAIN__/__SERVER_IP__
+conf-file=/tmp/records.conf

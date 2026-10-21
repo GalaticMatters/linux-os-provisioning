@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Desktop LAN</title>
+  <title>Cybersecurity LAN</title>
   <style>
     :root {
       color-scheme: dark;
@@ -25,9 +25,9 @@
       font: 1.05rem/1.5 ui-sans-serif, "Segoe UI", sans-serif;
     }
     main {
-      width: min(40rem, calc(100% - 2rem));
+      width: min(52rem, calc(100% - 2rem));
       margin: 0 auto;
-      padding: 4.5rem 0 3rem;
+      padding: 3.5rem 0 3rem;
     }
     p { margin: 0; }
     .kicker {
@@ -41,29 +41,28 @@
     h1 {
       margin: 0 0 0.75rem;
       font-family: ui-serif, Georgia, "Iowan Old Style", serif;
-      font-size: clamp(2.4rem, 6vw, 3.4rem);
+      font-size: clamp(2.2rem, 6vw, 3.2rem);
       font-weight: 560;
       letter-spacing: -0.03em;
       line-height: 0.95;
     }
-    .lead {
-      max-width: 36rem;
-      color: var(--muted);
-    }
+    .lead { max-width: 40rem; color: var(--muted); }
     ul {
       list-style: none;
-      margin: 2rem 0 0;
-      padding: 0;
-      border-top: 1px solid var(--line);
-    }
-    li { border-bottom: 1px solid var(--line); }
-    a.desk {
       display: grid;
-      grid-template-columns: 7.5rem 1fr auto;
+      grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+      gap: 0.5rem;
+      margin: 1.75rem 0 0;
+      padding: 0;
+    }
+    a.desk {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
       gap: 0.75rem;
-      align-items: center;
-      min-height: 4.25rem;
-      padding: 0.85rem 0.15rem;
+      min-height: 2.75rem;
+      padding: 0.65rem 0.75rem;
+      background: var(--card);
       color: inherit;
       text-decoration: none;
     }
@@ -73,62 +72,72 @@
       outline: 2px solid var(--accent);
       outline-offset: 2px;
     }
-    .os {
-      font-family: ui-serif, Georgia, serif;
-      font-size: 1.45rem;
-    }
+    .os { font-variant-numeric: tabular-nums; }
     .host {
       color: var(--muted);
-      font-variant-numeric: tabular-nums;
+      font-size: 0.82rem;
       overflow-wrap: anywhere;
     }
-    .go {
-      color: var(--accent);
-      font-size: 1.25rem;
-    }
     .note {
-      margin-top: 1.75rem;
+      margin-top: 1.5rem;
       color: var(--muted);
       font-size: 0.95rem;
     }
-    @media (max-width: 640px) {
-      main { padding-top: 2.5rem; }
-      a.desk {
-        grid-template-columns: 1fr auto;
-        grid-template-areas: "os go" "host host";
-      }
-      .os { grid-area: os; }
-      .host { grid-area: host; }
-      .go { grid-area: go; }
-    }
+    code { color: var(--text); }
   </style>
 </head>
 <body>
   <main>
-    <p class="kicker">LAN desktops</p>
-    <h1>Desktop LAN</h1>
-    <p class="lead">Kali, Ubuntu, and Debian, each in its own browser tab. The sessions are replaced at 02:00.</p>
+    <p class="kicker">LAN lab</p>
+    <h1>Cybersecurity LAN</h1>
+    <p class="lead">Kali desktops in the browser. Each name on this page is one container, wiped at 02:00.</p>
     <ul>
-      <li><a class="desk" data-os="kali" href="https://kali.desktop.lan/"><span class="os">Kali</span><span class="host">kali.desktop.lan</span><span class="go" aria-hidden="true">→</span></a></li>
-      <li><a class="desk" data-os="ubuntu" href="https://ubuntu.desktop.lan/"><span class="os">Ubuntu</span><span class="host">ubuntu.desktop.lan</span><span class="go" aria-hidden="true">→</span></a></li>
-      <li><a class="desk" data-os="debian" href="https://debian.desktop.lan/"><span class="os">Debian</span><span class="host">debian.desktop.lan</span><span class="go" aria-hidden="true">→</span></a></li>
+      <li><a class="desk" data-name="kali01" href="https://kali01.cybersecurity.lan/"><span class="os">kali01</span><span class="host">kali01.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali02" href="https://kali02.cybersecurity.lan/"><span class="os">kali02</span><span class="host">kali02.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali03" href="https://kali03.cybersecurity.lan/"><span class="os">kali03</span><span class="host">kali03.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali04" href="https://kali04.cybersecurity.lan/"><span class="os">kali04</span><span class="host">kali04.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali05" href="https://kali05.cybersecurity.lan/"><span class="os">kali05</span><span class="host">kali05.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali06" href="https://kali06.cybersecurity.lan/"><span class="os">kali06</span><span class="host">kali06.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali07" href="https://kali07.cybersecurity.lan/"><span class="os">kali07</span><span class="host">kali07.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali08" href="https://kali08.cybersecurity.lan/"><span class="os">kali08</span><span class="host">kali08.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali09" href="https://kali09.cybersecurity.lan/"><span class="os">kali09</span><span class="host">kali09.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali10" href="https://kali10.cybersecurity.lan/"><span class="os">kali10</span><span class="host">kali10.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali11" href="https://kali11.cybersecurity.lan/"><span class="os">kali11</span><span class="host">kali11.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali12" href="https://kali12.cybersecurity.lan/"><span class="os">kali12</span><span class="host">kali12.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali13" href="https://kali13.cybersecurity.lan/"><span class="os">kali13</span><span class="host">kali13.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali14" href="https://kali14.cybersecurity.lan/"><span class="os">kali14</span><span class="host">kali14.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali15" href="https://kali15.cybersecurity.lan/"><span class="os">kali15</span><span class="host">kali15.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali16" href="https://kali16.cybersecurity.lan/"><span class="os">kali16</span><span class="host">kali16.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali17" href="https://kali17.cybersecurity.lan/"><span class="os">kali17</span><span class="host">kali17.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali18" href="https://kali18.cybersecurity.lan/"><span class="os">kali18</span><span class="host">kali18.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali19" href="https://kali19.cybersecurity.lan/"><span class="os">kali19</span><span class="host">kali19.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali20" href="https://kali20.cybersecurity.lan/"><span class="os">kali20</span><span class="host">kali20.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali21" href="https://kali21.cybersecurity.lan/"><span class="os">kali21</span><span class="host">kali21.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali22" href="https://kali22.cybersecurity.lan/"><span class="os">kali22</span><span class="host">kali22.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali23" href="https://kali23.cybersecurity.lan/"><span class="os">kali23</span><span class="host">kali23.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali24" href="https://kali24.cybersecurity.lan/"><span class="os">kali24</span><span class="host">kali24.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali25" href="https://kali25.cybersecurity.lan/"><span class="os">kali25</span><span class="host">kali25.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali26" href="https://kali26.cybersecurity.lan/"><span class="os">kali26</span><span class="host">kali26.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali27" href="https://kali27.cybersecurity.lan/"><span class="os">kali27</span><span class="host">kali27.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali28" href="https://kali28.cybersecurity.lan/"><span class="os">kali28</span><span class="host">kali28.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali29" href="https://kali29.cybersecurity.lan/"><span class="os">kali29</span><span class="host">kali29.cybersecurity.lan</span></a></li>
+      <li><a class="desk" data-name="kali30" href="https://kali30.cybersecurity.lan/"><span class="os">kali30</span><span class="host">kali30.cybersecurity.lan</span></a></li>
     </ul>
-    <p class="note">Home directories live in memory. A file left on the desktop is gone at the next reset, and there is no sign-in on these hosts. If the browser warns about the certificate, install this server’s Caddy CA first.</p>
-    <noscript>
-      <p class="note">The links above use desktop.lan. If this server’s domain is different, open https://kali. plus the name in the address bar, and the same for ubuntu and debian.</p>
-    </noscript>
+    <p class="note">Ubuntu servers are not browser desktops. Shell access is <code>ssh student@ubuntu01.cybersecurity.lan</code> through <code>ubuntu30.cybersecurity.lan</code>, port 22.</p>
+    <p class="note">Sessions are recreated at 02:00 in the configured timezone. Kali home directories are memory only. Ubuntu disks, including SSH host keys, are wiped by the same recreate. There is no sign-in on the Kali pages.</p>
   </main>
   <script>
     (function () {
       var host = location.hostname;
       var port = location.port ? ":" + location.port : "";
-      var scheme = "https:";
-      var links = document.querySelectorAll("a[data-os]");
+      var links = document.querySelectorAll("a[data-name]");
       for (var i = 0; i < links.length; i++) {
-        var name = links[i].getAttribute("data-os") + "." + host;
-        links[i].href = scheme + "//" + name + port + "/";
+        var name = links[i].getAttribute("data-name") + "." + host;
+        links[i].href = "https://" + name + port + "/";
         links[i].querySelector(".host").textContent = name;
       }
+      var zones = document.querySelectorAll(".zone");
+      for (var j = 0; j < zones.length; j++) zones[j].textContent = host;
     })();
   </script>
 </body>
