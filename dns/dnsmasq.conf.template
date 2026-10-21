@@ -1,0 +1,21 @@
+# Rendered at container start. Edit dns/dnsmasq.conf.template, not this file.
+# Listen on every interface inside the container. Docker publishes the host
+# port on SERVER_IP only. listen-address=0.0.0.0 makes dnsmasq ignore queries
+# that arrive on the container's real address.
+port=53
+no-resolv
+no-hosts
+domain-needed
+bogus-priv
+stop-dns-rebind
+rebind-localhost-ok
+clear-on-reload
+log-facility=-
+
+# Names outside the desktop zone.
+server=__UPSTREAM_DNS_1__
+server=__UPSTREAM_DNS_2__
+
+# The apex and every subdomain. Not forwarded upstream.
+local=/__BASE_DOMAIN__/
+address=/__BASE_DOMAIN__/__SERVER_IP__

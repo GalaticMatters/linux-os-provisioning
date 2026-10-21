@@ -1,0 +1,51 @@
+# Browsers talk to Caddy. Caddy talks HTTPS to each desktop on port 3001,
+# which is the Selkies HTTPS port (port 3000 is HTTP and is not used here).
+# The container certificate is self-signed, so verification of that hop is
+# disabled. Browsers only see the Caddy internal CA.
+{
+	local_certs
+	admin off
+	servers {
+		protocols h1 h2
+	}
+}
+
+(desktop) {
+	reverse_proxy {args[0]} {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		transport http {
+			tls_insecure_skip_verify
+			resolvers 127.0.0.11
+			dial_timeout 10s
+			response_header_timeout 2m
+		}
+		# Stream the desktop socket; do not buffer it.
+		flush_interval -1
+	}
+}
+
+{$BASE_DOMAIN} {
+	encode gzip
+	header Cache-Control "no-store"
+	@favicon path /favicon.ico
+	handle @favicon {
+		respond "" 204
+	}
+	handle {
+		root * /srv
+		file_server
+	}
+}
+
+kali.{$BASE_DOMAIN} {
+	import desktop https://kali:3001
+}
+
+ubuntu.{$BASE_DOMAIN} {
+	import desktop https://ubuntu:3001
+}
+
+debian.{$BASE_DOMAIN} {
+	import desktop https://debian:3001
+}

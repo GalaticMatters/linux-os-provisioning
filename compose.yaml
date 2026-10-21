@@ -1,0 +1,130 @@
+# Browser desktops on *.desktop.lan.
+#
+# Kali, Ubuntu, and Debian run as linuxserver Selkies containers. Caddy
+# presents the internal CA to browsers and proxies HTTPS to each desktop's
+# web port (3001). Homes live on tmpfs. The scheduler recreates the
+# labeled desktops at 02:00 so writable state is wiped.
+#
+# Adding an OS: copy a desktop service, keep the label desktop.lan.reset,
+# and add a matching site in caddy/Caddyfile. Wildcard DNS already covers
+# the new name. See the README.
+
+name: desktop-lan
+
+x-desktop: &desktop
+  shm_size: "1gb"
+  restart: unless-stopped
+  stop_grace_period: 20s
+  environment:
+    PUID: ${PUID:-1000}
+    PGID: ${PGID:-1000}
+    TZ: ${TZ:-UTC}
+  tmpfs:
+    - /config:rw,nosuid,nodev,size=${DESKTOP_TMPFS_SIZE:-2g},mode=1777
+  labels:
+    desktop.lan.reset: "true"
+  logging: &json-logs
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  healthcheck:
+    # Port 3001 is the HTTPS desktop. bash is in the Debian, Ubuntu, and Kali images.
+    test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3001'"]
+    interval: 30s
+    timeout: 5s
+    retries: 5
+    start_period: 180s
+
+services:
+  kali:
+    <<: *desktop
+    image: lscr.io/linuxserver/kali-linux:latest
+    networks: [desktop]
+
+  ubuntu:
+    <<: *desktop
+    image: lscr.io/linuxserver/webtop:ubuntu-kde
+    networks: [desktop]
+
+  debian:
+    <<: *desktop
+    image: lscr.io/linuxserver/webtop:debian-kde
+    networks: [desktop]
+
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    depends_on:
+      - kali
+      - ubuntu
+      - debian
+    environment:
+      BASE_DOMAIN: ${BASE_DOMAIN:-desktop.lan}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/site:/srv:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [desktop]
+    logging: *json-logs
+    healthcheck:
+      # Port 80 redirects to HTTPS. BusyBox wget follows that redirect and then
+      # fails the TLS handshake to 127.0.0.1, so only the status line matters.
+      test: ["CMD-SHELL", "wget -S -O /dev/null http://127.0.0.1/ 2>&1 | grep -q 308"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  dnsmasq:
+    profiles: ["dns"]
+    build: ./dns
+    image: desktop-lan-dnsmasq:1
+    restart: unless-stopped
+    environment:
+      SERVER_IP: ${SERVER_IP:?Set SERVER_IP in .env to this server's LAN address}
+      BASE_DOMAIN: ${BASE_DOMAIN:-desktop.lan}
+      UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}
+      UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-1.0.0.1}
+    # Publish on the LAN address only, so this does not take over 127.0.0.1:53
+    # (systemd-resolved's stub usually lives there).
+    ports:
+      - "${SERVER_IP}:${DNS_PORT:-53}:53/udp"
+      - "${SERVER_IP}:${DNS_PORT:-53}:53/tcp"
+    networks: [desktop]
+    logging: *json-logs
+    healthcheck:
+      test: ["CMD-SHELL", "dig +short +time=2 +tries=1 kali.$${BASE_DOMAIN} @127.0.0.1 | grep -qx \"$$SERVER_IP\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  scheduler:
+    build: ./scheduler
+    image: desktop-lan-scheduler:1
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      # Host path of the socket. reset-desktops.sh discovers the project
+      # directory from the /workspace mount and re-runs Compose against it.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/workspace:ro
+    networks: [desktop]
+    logging: *json-logs
+
+networks:
+  desktop:
+    name: desktop-lan
+
+volumes:
+  caddy-data:
+    name: desktop-lan-caddy-data
+  caddy-config:
+    name: desktop-lan-caddy-config

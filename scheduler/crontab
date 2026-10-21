@@ -1,0 +1,3 @@
+# 02:00 in the scheduler container's TZ (the TZ value from .env).
+# Supercronic uses the process timezone and does not overlap a running reset.
+0 2 * * * /usr/local/bin/reset-desktops.sh

@@ -1,0 +1,5 @@
+# Workstation fallback when you cannot change DNS.
+# Replace SERVER_IP, then append these lines to /etc/hosts on each workstation.
+# A hosts file has no wildcard, so each name is listed. Add a name here when
+# you add an OS. The bundled dnsmasq does not need this file.
+SERVER_IP desktop.lan kali.desktop.lan ubuntu.desktop.lan debian.desktop.lan
