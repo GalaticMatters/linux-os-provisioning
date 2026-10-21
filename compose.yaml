@@ -147,152 +147,152 @@ services:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.101
+        ipv4_address: 10.0.253.2
   ubuntu02:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.102
+        ipv4_address: 10.0.253.3
   ubuntu03:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.103
+        ipv4_address: 10.0.253.4
   ubuntu04:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.104
+        ipv4_address: 10.0.253.5
   ubuntu05:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.105
+        ipv4_address: 10.0.253.6
   ubuntu06:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.106
+        ipv4_address: 10.0.253.7
   ubuntu07:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.107
+        ipv4_address: 10.0.253.8
   ubuntu08:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.108
+        ipv4_address: 10.0.253.9
   ubuntu09:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.109
+        ipv4_address: 10.0.253.10
   ubuntu10:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.110
+        ipv4_address: 10.0.253.11
   ubuntu11:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.111
+        ipv4_address: 10.0.253.12
   ubuntu12:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.112
+        ipv4_address: 10.0.253.13
   ubuntu13:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.113
+        ipv4_address: 10.0.253.14
   ubuntu14:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.114
+        ipv4_address: 10.0.253.15
   ubuntu15:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.115
+        ipv4_address: 10.0.253.16
   ubuntu16:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.116
+        ipv4_address: 10.0.253.17
   ubuntu17:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.117
+        ipv4_address: 10.0.253.18
   ubuntu18:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.118
+        ipv4_address: 10.0.253.19
   ubuntu19:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.119
+        ipv4_address: 10.0.253.20
   ubuntu20:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.120
+        ipv4_address: 10.0.253.21
   ubuntu21:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.121
+        ipv4_address: 10.0.253.22
   ubuntu22:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.122
+        ipv4_address: 10.0.253.23
   ubuntu23:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.123
+        ipv4_address: 10.0.253.24
   ubuntu24:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.124
+        ipv4_address: 10.0.253.25
   ubuntu25:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.125
+        ipv4_address: 10.0.253.26
   ubuntu26:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.126
+        ipv4_address: 10.0.253.27
   ubuntu27:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.127
+        ipv4_address: 10.0.253.28
   ubuntu28:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.128
+        ipv4_address: 10.0.253.29
   ubuntu29:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.129
+        ipv4_address: 10.0.253.30
   ubuntu30:
     <<: *ubuntu
     networks:
       lan:
-        ipv4_address: 192.168.1.130
+        ipv4_address: 10.0.253.31
   caddy:
     image: caddy:2.11.7-alpine
     restart: unless-stopped
@@ -390,7 +390,7 @@ networks:
     name: cybersecurity-macvlan
     driver: macvlan
     driver_opts:
-      parent: ${PARENT_IFACE:?Set PARENT_IFACE to the LAN NIC}
+      parent: ${PARENT_IFACE:?Set PARENT_IFACE to the interface that already has 10.0.253.1}
     ipam:
       config:
         - subnet: ${LAN_SUBNET:?Set LAN_SUBNET}

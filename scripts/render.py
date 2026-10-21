@@ -3,7 +3,10 @@
 
 Writes compose.yaml, caddy/Caddyfile, caddy/site/index.html, dns/records.conf,
 and dns/hosts.example. Defaults are 30 Kali desktops and 30 Ubuntu SSH servers.
-Re-run after changing KALI_COUNT, UBUNTU_COUNT, UBUNTU_IP_START, or BASE_DOMAIN.
+The example LAN is 10.0.253.0/24. The server and gateway are 10.0.253.1.
+ubuntu01 is 10.0.253.2 and ubuntu30 is 10.0.253.31. Kali names resolve to
+10.0.253.1 and stay behind Caddy; they are not placed on the macvlan.
+Re-run after changing KALI_COUNT, UBUNTU_COUNT, UBUNTU_IP_START, SERVER_IP, or BASE_DOMAIN.
 """
 
 from __future__ import annotations
@@ -90,11 +93,15 @@ def username(raw: str) -> str:
 
 
 def iface(raw: str) -> str:
+    message = (
+        "PARENT_IFACE must be the NIC name of the interface which already has "
+        f"10.0.253.1, got {raw!r}"
+    )
     if not raw or len(raw) > 15:
-        raise SystemExit(f"PARENT_IFACE must be a NIC name like eth0, got {raw!r}")
+        raise SystemExit(message)
     for char in raw:
         if char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.:-":
-            raise SystemExit(f"PARENT_IFACE must be a NIC name like eth0, got {raw!r}")
+            raise SystemExit(message)
     return raw
 
 
@@ -276,7 +283,7 @@ def render_compose(kali: list[str], ubuntu: list[tuple[str, str]]) -> str:
         "    name: cybersecurity-macvlan",
         "    driver: macvlan",
         "    driver_opts:",
-        "      parent: ${PARENT_IFACE:?Set PARENT_IFACE to the LAN NIC}",
+        "      parent: ${PARENT_IFACE:?Set PARENT_IFACE to the interface that already has 10.0.253.1}",
         "    ipam:",
         "      config:",
         "        - subnet: ${LAN_SUBNET:?Set LAN_SUBNET}",
@@ -434,7 +441,7 @@ def main() -> int:
     try:
         subnet = ipaddress.ip_network(subnet_raw, strict=True)
     except ValueError as exc:
-        raise SystemExit(f"LAN_SUBNET must be a network like 192.168.1.0/24 ({exc})") from None
+        raise SystemExit(f"LAN_SUBNET must be a network like 10.0.253.0/24 ({exc})") from None
     if subnet.version != 4:
         raise SystemExit("LAN_SUBNET must be IPv4")
     gateway = ipv4(need(env, "LAN_GATEWAY"), "LAN_GATEWAY")
