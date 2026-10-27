@@ -293,6 +293,48 @@ services:
     networks:
       lan:
         ipv4_address: 10.0.253.40
+  ubuntu100:
+    image: lscr.io/linuxserver/webtop:ubuntu-xfce
+    shm_size: "1gb"
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      TITLE: Ubuntu100
+    volumes:
+      - /var/lib/cybersecurity/ubuntu100:/config
+    networks: [desktop]
+    logging: *json-logs
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3001'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+
+  ubuntu111:
+    image: lscr.io/linuxserver/webtop:ubuntu-xfce
+    shm_size: "1gb"
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      TITLE: Ubuntu111
+    volumes:
+      - ubuntu111-config:/config
+    networks: [desktop]
+    logging: *json-logs
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3001'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+
   caddy:
     image: caddy:2.11.7-alpine
     restart: unless-stopped
@@ -327,6 +369,8 @@ services:
       - kali28
       - kali29
       - kali30
+      - ubuntu100
+      - ubuntu111
     environment:
       BASE_DOMAIN: ${BASE_DOMAIN:-cybersecurity.lan}
       TZ: ${TZ:-UTC}
@@ -383,6 +427,16 @@ services:
     networks: [desktop]
     logging: *json-logs
 
+  cloudflared:
+    profiles: ["public"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    networks: [desktop]
+    logging: *json-logs
+
 networks:
   desktop:
     name: cybersecurity-desktop
@@ -401,3 +455,5 @@ volumes:
     name: cybersecurity-caddy-data
   caddy-config:
     name: cybersecurity-caddy-config
+  ubuntu111-config:
+    name: cybersecurity-ubuntu111-config

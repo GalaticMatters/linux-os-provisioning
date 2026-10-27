@@ -217,12 +217,54 @@ def render_compose(kali: list[str], ubuntu: list[tuple[str, str]]) -> str:
             f"        ipv4_address: {addr}",
         ]
     lines += [
+        "  ubuntu100:",
+        "    image: lscr.io/linuxserver/webtop:ubuntu-xfce",
+        '    shm_size: "1gb"',
+        "    restart: unless-stopped",
+        "    stop_grace_period: 20s",
+        "    environment:",
+        "      PUID: ${PUID:-1000}",
+        "      PGID: ${PGID:-1000}",
+        "      TZ: ${TZ:-UTC}",
+        "      TITLE: Ubuntu100",
+        "    volumes:",
+        "      - /var/lib/cybersecurity/ubuntu100:/config",
+        "    networks: [desktop]",
+        "    logging: *json-logs",
+        "    healthcheck:",
+        '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3001\'"]',
+        "      interval: 30s",
+        "      timeout: 5s",
+        "      retries: 5",
+        "      start_period: 180s",
+        "",
+        "  ubuntu111:",
+        "    image: lscr.io/linuxserver/webtop:ubuntu-xfce",
+        '    shm_size: "1gb"',
+        "    restart: unless-stopped",
+        "    stop_grace_period: 20s",
+        "    environment:",
+        "      PUID: ${PUID:-1000}",
+        "      PGID: ${PGID:-1000}",
+        "      TZ: ${TZ:-UTC}",
+        "      TITLE: Ubuntu111",
+        "    volumes:",
+        "      - ubuntu111-config:/config",
+        "    networks: [desktop]",
+        "    logging: *json-logs",
+        "    healthcheck:",
+        '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3001\'"]',
+        "      interval: 30s",
+        "      timeout: 5s",
+        "      retries: 5",
+        "      start_period: 180s",
+        "",
         "  caddy:",
         "    image: caddy:2.11.7-alpine",
         "    restart: unless-stopped",
         "    depends_on:",
     ]
-    for name in kali:
+    for name in kali + ["ubuntu100", "ubuntu111"]:
         lines.append(f"      - {name}")
     lines += [
         "    environment:",
@@ -281,6 +323,16 @@ def render_compose(kali: list[str], ubuntu: list[tuple[str, str]]) -> str:
         "    networks: [desktop]",
         "    logging: *json-logs",
         "",
+        "  cloudflared:",
+        '    profiles: ["public"]',
+        "    image: cloudflare/cloudflared:latest",
+        "    restart: unless-stopped",
+        "    command: tunnel --no-autoupdate run",
+        "    environment:",
+        '      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}',
+        "    networks: [desktop]",
+        "    logging: *json-logs",
+        "",
         "networks:",
         "  desktop:",
         "    name: cybersecurity-desktop",
@@ -299,14 +351,16 @@ def render_compose(kali: list[str], ubuntu: list[tuple[str, str]]) -> str:
         "    name: cybersecurity-caddy-data",
         "  caddy-config:",
         "    name: cybersecurity-caddy-config",
+        "  ubuntu111-config:",
+        "    name: cybersecurity-ubuntu111-config",
         "",
     ]
     return "\n".join(lines)
 
 
-def render_caddy(kali: list[str]) -> str:
+def render_caddy(kali: list[str], desktops: list[str]) -> str:
     blocks = []
-    for name in kali:
+    for name in kali + desktops:
         blocks.append(
             "\n".join(
                 [
@@ -371,7 +425,7 @@ def render_records(kali: list[str], ubuntu: list[tuple[str, str]]) -> str:
         "# would also answer every subdomain and hide the Ubuntu records.",
         "host-record=__BASE_DOMAIN__,__SERVER_IP__",
     ]
-    for name in kali:
+    for name in kali + ["ubuntu100", "ubuntu111"]:
         lines.append(f"address=/{name}.__BASE_DOMAIN__/__SERVER_IP__")
     for name, addr in ubuntu:
         lines.append(f"address=/{name}.__BASE_DOMAIN__/{addr}")
@@ -391,7 +445,7 @@ def render_hosts(
         "# SERVER_IP, the domain, the counts, or UBUNTU_IP_START.",
         f"{server_ip} {domain}",
     ]
-    for name in kali:
+    for name in kali + ["ubuntu100", "ubuntu111"]:
         lines.append(f"{server_ip} {name}.{domain}")
     for name, addr in ubuntu:
         lines.append(f"{addr} {name}.{domain}")
@@ -402,7 +456,7 @@ def render_hosts(
 def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_count: int) -> str:
     template = (root / "caddy" / "index.template.html").read_text()
     items = []
-    for name in kali:
+    for name in kali + ["ubuntu100", "ubuntu111"]:
         items.append(
             "      "
             f'<li><a class="desk" data-name="{name}" href="https://{name}.{domain}/">'
@@ -415,10 +469,16 @@ def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_cou
         f"Ubuntu servers are not browser desktops. "
         f"Shell access is <code>ssh {user}@{first}</code> through <code>{last}</code>, port 22."
     )
-    if "%%KALI_LINKS%%" not in template or "%%SSH_BLURB%%" not in template:
+    if "%%KALI_LINKS%%" not in template or "%%SSH_BLURB%%" not in template or "%%DESKTOP_BLURB%%" not in template:
         raise SystemExit("caddy/index.template.html is missing a render marker")
     html = template.replace("%%KALI_LINKS%%", "\n".join(items))
     html = html.replace("%%SSH_BLURB%%", blurb)
+    html = html.replace(
+        "%%DESKTOP_BLURB%%",
+        "ubuntu100 and ubuntu111 are persistent Ubuntu desktops and are not wiped at 02:00. "
+        f"ubuntu100 keeps its files on a 500 GB disk. Open them at "
+        f"https://ubuntu100.{domain}/ and https://ubuntu111.{domain}/.",
+    )
     return html
 
 
@@ -462,7 +522,7 @@ def main() -> int:
     ubuntu = list(zip(fleet_names("ubuntu", ubuntu_count), addresses))
 
     write(root / "compose.yaml", render_compose(kali, ubuntu))
-    write(root / "caddy" / "Caddyfile", render_caddy(kali))
+    write(root / "caddy" / "Caddyfile", render_caddy(kali, ["ubuntu100", "ubuntu111"]))
     write(root / "caddy" / "site" / "index.html", render_index(root, domain, user, kali, ubuntu_count))
     write(root / "dns" / "records.conf", render_records(kali, ubuntu))
     write(root / "dns" / "hosts.example", render_hosts(domain, str(server), kali, ubuntu))
