@@ -22,6 +22,8 @@ x-kali: &kali
     TZ: ${TZ:-UTC}
   tmpfs:
     - /config:rw,nosuid,nodev,size=${DESKTOP_TMPFS_SIZE:-2g},mode=1777
+  volumes:
+    - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
   labels:
     fleet.reset: "true"
   logging: *json-logs
@@ -307,6 +309,7 @@ services:
       TITLE: Kali111
     volumes:
       - kali111-config:/config
+      - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
     networks: [desktop]
     logging: *json-logs
     healthcheck:
@@ -325,7 +328,9 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       TZ: ${TZ:-UTC}
-      TITLE: Ubuntu100
+      CUSTOM_USER: ${DESKTOP_USER:-van}
+      PASSWORD: ${DESKTOP_PASSWORD:-}
+      TITLE: Ubuntu100 desktop
     volumes:
       - /var/lib/cybersecurity/ubuntu100:/config
     networks: [desktop]

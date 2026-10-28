@@ -1,0 +1,6 @@
+#!/usr/bin/with-contenv bash
+# linuxserver runs this before the desktop starts.
+if ! command -v ping >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y --no-install-recommends iputils-ping
+fi
