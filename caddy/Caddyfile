@@ -160,6 +160,10 @@ kali30.{$BASE_DOMAIN} {
 	import desktop https://kali30:3001
 }
 
+kali111.{$BASE_DOMAIN} {
+	import desktop https://kali111:3001
+}
+
 ubuntu100.{$BASE_DOMAIN} {
 	import desktop https://ubuntu100:3001
 }
