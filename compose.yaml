@@ -348,7 +348,7 @@ services:
       TZ: ${TZ:-UTC}
       CUSTOM_USER: ${DESKTOP_USER:-van}
       PASSWORD: ${DESKTOP_PASSWORD:-}
-      TITLE: Ubuntu111
+      TITLE: Ubuntu111 desktop
     volumes:
       - ubuntu111-config:/config
     networks: [desktop]
@@ -359,6 +359,26 @@ services:
       timeout: 5s
       retries: 5
       start_period: 180s
+
+  ubuntuserver:
+    image: cybersecurity-ubuntu-ssh:1
+    build: ./ubuntu
+    restart: unless-stopped
+    stop_grace_period: 10s
+    environment:
+      SSH_USER: ${DESKTOP_USER:-van}
+      SSH_PASSWORD: ${DESKTOP_PASSWORD:-}
+      TZ: ${TZ:-UTC}
+    networks:
+      lan:
+        ipv4_address: ${UBUNTU_SERVER_IP:-10.0.253.41}
+    logging: *json-logs
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/22'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   caddy:
     image: caddy:2.11.7-alpine
