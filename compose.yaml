@@ -427,6 +427,16 @@ services:
     networks: [desktop]
     logging: *json-logs
 
+  cloudflared:
+    profiles: ["public"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    networks: [desktop]
+    logging: *json-logs
+
 networks:
   desktop:
     name: cybersecurity-desktop
