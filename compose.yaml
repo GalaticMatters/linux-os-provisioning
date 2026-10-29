@@ -380,15 +380,15 @@ services:
     stop_grace_period: 20s
     environment:
       TZ: ${TZ:-UTC}
-      DESKTOP_USER: ${DESKTOP_USER:-van}
-      SSH_PASS: ${DESKTOP_PASSWORD:-}
-      VNC_PASS: ${DESKTOP_PASSWORD:-}
-      VNC_PASS_RO: ${DESKTOP_PASSWORD:-}
+      MINT_USER: ${DEREK_USER:-derek}
+      SSH_PASS: ${DEREK_PASSWORD:-}
+      VNC_PASS: ${DEREK_PASSWORD:-}
+      VNC_PASS_RO: ${DEREK_PASSWORD:-}
       START_SYSTEMD: "false"
       L: en_US
     entrypoint: ["/bin/bash", "/mint-entrypoint.sh"]
     volumes:
-      - derek-config:/home/van
+      - derek-config:/home/${DEREK_USER:-derek}
       - ./mint/entrypoint.sh:/mint-entrypoint.sh:ro
     networks: [desktop]
     logging: *json-logs
@@ -407,15 +407,15 @@ services:
     stop_grace_period: 20s
     environment:
       TZ: ${TZ:-UTC}
-      DESKTOP_USER: ${DESKTOP_USER:-van}
-      SSH_PASS: ${DESKTOP_PASSWORD:-}
-      VNC_PASS: ${DESKTOP_PASSWORD:-}
-      VNC_PASS_RO: ${DESKTOP_PASSWORD:-}
+      MINT_USER: ${VYAS_USER:-vyas}
+      SSH_PASS: ${VYAS_PASSWORD:-}
+      VNC_PASS: ${VYAS_PASSWORD:-}
+      VNC_PASS_RO: ${VYAS_PASSWORD:-}
       START_SYSTEMD: "false"
       L: en_US
     entrypoint: ["/bin/bash", "/mint-entrypoint.sh"]
     volumes:
-      - vyas-config:/home/van
+      - vyas-config:/home/${VYAS_USER:-vyas}
       - ./mint/entrypoint.sh:/mint-entrypoint.sh:ro
     networks: [desktop]
     logging: *json-logs

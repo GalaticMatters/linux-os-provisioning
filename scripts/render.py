@@ -146,7 +146,12 @@ def fleet_names(prefix: str, count: int) -> list[str]:
 
 
 def render_mint(name: str) -> list[str]:
-    """Persistent Linux Mint Cinnamon desktop. No fleet.reset label."""
+    """Persistent Linux Mint Cinnamon desktop. No fleet.reset label.
+
+    Each desktop has its own account. derek uses DEREK_USER / DEREK_PASSWORD.
+    vyas uses VYAS_USER / VYAS_PASSWORD. They do not use DESKTOP_USER.
+    """
+    key = name.upper()
     return [
         f"  {name}:",
         "    image: infrastlabs/docker-headless:cinna",
@@ -156,15 +161,15 @@ def render_mint(name: str) -> list[str]:
         "    stop_grace_period: 20s",
         "    environment:",
         "      TZ: ${TZ:-UTC}",
-        "      DESKTOP_USER: ${DESKTOP_USER:-van}",
-        "      SSH_PASS: ${DESKTOP_PASSWORD:-}",
-        "      VNC_PASS: ${DESKTOP_PASSWORD:-}",
-        "      VNC_PASS_RO: ${DESKTOP_PASSWORD:-}",
+        f"      MINT_USER: ${{{key}_USER:-{name}}}",
+        f"      SSH_PASS: ${{{key}_PASSWORD:-}}",
+        f"      VNC_PASS: ${{{key}_PASSWORD:-}}",
+        f"      VNC_PASS_RO: ${{{key}_PASSWORD:-}}",
         '      START_SYSTEMD: "false"',
         "      L: en_US",
         '    entrypoint: ["/bin/bash", "/mint-entrypoint.sh"]',
         "    volumes:",
-        f"      - {name}-config:/home/van",
+        f"      - {name}-config:/home/${{{key}_USER:-{name}}}",
         "      - ./mint/entrypoint.sh:/mint-entrypoint.sh:ro",
         "    networks: [desktop]",
         "    logging: *json-logs",
@@ -589,7 +594,7 @@ def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_cou
         f"https://kali111.{domain}/, https://ubuntu100.{domain}/, and https://ubuntu111.{domain}/. "
         "derek and vyas are persistent Linux Mint Cinnamon desktops. "
         "They are not on this page. Open them at https://derek.research101.stream/ "
-        "and https://vyas.research101.stream/. The account is van.",
+        "and https://vyas.research101.stream/. derek signs in as DEREK_USER (default derek). vyas signs in as VYAS_USER (default vyas).",
     )
     return html
 

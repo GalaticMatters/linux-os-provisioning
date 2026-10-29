@@ -1,30 +1,34 @@
 #!/bin/bash
-# infrastlabs/docker-headless:cinna signs in as "headless".
-# Rename that account to DESKTOP_USER (van) and keep the home on the named volume.
+# Compose sets MINT_USER from DEREK_USER or VYAS_USER. Create that account.
+# Do not use the shared van account. The named volume is mounted at /home/$MINT_USER.
 set -eu
 
-user=${DESKTOP_USER:-van}
-home=/home/van
+user=${MINT_USER:-}
+home="/home/${user}"
 
-if [ "$user" = "root" ] || ! printf '%s' "$user" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$'; then
-  echo "DESKTOP_USER must be a lowercase account name other than root" >&2
+if [ -z "$user" ] || [ "$user" = "root" ] || ! printf '%s' "$user" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$'; then
+  echo "MINT_USER must be a lowercase account name other than root (set DEREK_USER or VYAS_USER)" >&2
   exit 1
 fi
 
-if id headless >/dev/null 2>&1 && [ "$user" != "headless" ]; then
-  usermod -l "$user" headless
-  if getent group headless >/dev/null 2>&1 && ! getent group "$user" >/dev/null 2>&1; then
-    groupmod -n "$user" headless
+if ! id "$user" >/dev/null 2>&1; then
+  if id headless >/dev/null 2>&1 && [ "$user" != "headless" ]; then
+    usermod -l "$user" headless
+    if getent group headless >/dev/null 2>&1 && ! getent group "$user" >/dev/null 2>&1; then
+      groupmod -n "$user" headless
+    fi
+  else
+    useradd --shell /bin/bash --home-dir "$home" "$user"
   fi
 fi
 
 if ! id "$user" >/dev/null 2>&1; then
-  echo "account $user does not exist in this image" >&2
+  echo "could not create account $user" >&2
   exit 1
 fi
 
 mkdir -p "$home"
-if [ -d /home/headless ] && [ -z "$(ls -A "$home" 2>/dev/null || true)" ]; then
+if [ -d /home/headless ] && [ "/home/headless" != "$home" ] && [ -z "$(ls -A "$home" 2>/dev/null || true)" ]; then
   cp -a /home/headless/. "$home/"
 fi
 usermod -d "$home" "$user"

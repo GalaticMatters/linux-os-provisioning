@@ -20,8 +20,12 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `TZ` | Timezone of the 02:00 reset. A tz database name (`UTC`, `America/New_York`), not a UTC offset. The host clock’s timezone is not used. |
 | `SSH_USER` | Account on every Ubuntu server. Not `root`. |
 | `SSH_PUBLIC_KEY` or `SSH_PASSWORD` | At least one. One single-line OpenSSH public key, and/or a single-line password. |
-| `DESKTOP_USER` | Account on the persistent desktops, including derek and vyas. Default `van`. |
+| `DESKTOP_USER` | Account on kali111, ubuntu100, ubuntu111, and ubuntuserver. Default `van`. Not used by derek or vyas. |
 | `DESKTOP_PASSWORD` | Password for that account. Put it only in `.env`. Do not commit it. |
+| `DEREK_USER` | Account on derek. Default `derek`. |
+| `DEREK_PASSWORD` | Password for derek. No default. Put it only in `.env`. Do not commit it. |
+| `VYAS_USER` | Account on vyas. Default `vyas`. |
+| `VYAS_PASSWORD` | Password for vyas. No default. Put it only in `.env`. Do not commit it. |
 
 `KALI_COUNT` and `UBUNTU_COUNT` default to 30. The repo already contains that render, so a copied `.env` can start all 60 without running the generator first.
 
@@ -79,7 +83,7 @@ Every Kali service uses the same image, so pulling one updates the image for the
 
 `lscr.io/linuxserver/webtop` has no Mint tag. Checked on 29 October 2026: Docker Hub tag queries for `mint`, `cinnamon`, `linuxmint`, and `lmde` each returned zero tags, and a walk of the ghcr.io `linuxserver/webtop` tag list (20,000 tags) contained none of those names. `linuxserver/rdesktop` has no Mint tag either. These two desktops use the published image `infrastlabs/docker-headless:cinna`. That image installs `mint-meta-cinnamon` (Cinnamon, not a minimal window manager) and serves it with noVNC. The HTTP port is **10081**. SSH is 10022 and RDP is 10089 inside the image; Cloudflare uses the HTTP port. This is not the Selkies 3000/3001 pair the Kali and Ubuntu webtops use.
 
-The account is `van` (`DESKTOP_USER`). The image signs in as `headless`; [`mint/entrypoint.sh`](mint/entrypoint.sh) renames that account to `van` before the desktop starts. The password is `DESKTOP_PASSWORD` from `.env`, for both the account and noVNC. Homes are the named volumes `cybersecurity-derek-config` and `cybersecurity-vyas-config`, mounted at `/home/van`. Neither service has `fleet.reset: "true"`, so the 02:00 job does not recreate them.
+derek and vyas do not share `DESKTOP_USER` or `DESKTOP_PASSWORD`. derek signs in as `DEREK_USER` (default `derek`) with `DEREK_PASSWORD`. vyas signs in as `VYAS_USER` (default `vyas`) with `VYAS_PASSWORD`. Neither password has a default. [`mint/entrypoint.sh`](mint/entrypoint.sh) creates that account from the image's `headless` user before the desktop starts. The same value is the noVNC password. Homes are the named volumes `cybersecurity-derek-config` and `cybersecurity-vyas-config`, mounted at `/home/$DEREK_USER` and `/home/$VYAS_USER`. Neither service has `fleet.reset: "true"`, so the 02:00 job does not recreate them.
 
 Do not add a second tunnel token. `cloudflared` (profile `public`) is the tunnel already in this Compose file. In the Cloudflare Zero Trust dashboard, on that same tunnel, add public hostnames. The service type is **HTTP**:
 
@@ -94,12 +98,12 @@ On the ProLiant, from this repo:
 
 ```sh
 git pull
-# .env must already set DESKTOP_PASSWORD. Do not commit it.
-docker compose pull derek vyas
-./scripts/lab.sh on
+# Set DEREK_PASSWORD and VYAS_PASSWORD in .env. Leave them empty in .env.example.
+# Do not commit the real passwords.
+docker compose up -d --force-recreate --no-deps derek vyas
 ```
 
-`lab.sh on` starts derek and vyas with the rest of the lab. If `CLOUDFLARE_TUNNEL_TOKEN` is set, it also starts the existing `cloudflared`. It does not start or stop dnsmasq. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
+`docker compose up -d --force-recreate --no-deps derek vyas` recreates only those two containers so they pick up the account and the home mount. The named volumes stay. This is not the 02:00 fleet reset. `lab.sh on` also starts them with the rest of the lab. If `CLOUDFLARE_TUNNEL_TOKEN` is set, `lab.sh on` starts the existing `cloudflared`. It does not start or stop dnsmasq. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
 
 `START_SYSTEMD` is `false`, so Cinnamon is started by the image's supervisor. The containers stay on the `desktop` network.
 
@@ -272,7 +276,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | --- | --- |
 | `compose.yaml` | Generated. 30 Kali, 30 Ubuntu, persistent desktops, Caddy, dnsmasq, scheduler, cloudflared. `mem_limit: 4g` on every service. |
 | `scripts/render.py` | Rebuilds the fleet files from `.env`, including derek and vyas |
-| `mint/entrypoint.sh` | Renames the Mint image account to `van` and keeps `/home/van` |
+| `mint/entrypoint.sh` | Creates the derek or vyas account and keeps `/home/<that user>` |
 | `.env.example` | Domain, timezone, NIC, subnet, counts, SSH placeholders |
 | `caddy/Caddyfile` | Generated. Internal CA and one site per Kali desktop |
 | `caddy/site/index.html` | Generated page on the apex name |
@@ -304,4 +308,4 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **Page loads, black screen.** The browser is not on HTTPS, or something is stripping WebSocket upgrades. Caddy forwards them.
 - **Reset did not run.** `docker compose logs scheduler` should show the timezone at start and a `reset:` line after 02:00. `docker compose exec scheduler date` should match `TZ`.
 - **derek or vyas does not load through Cloudflare.** The public hostname must be service type HTTP, origin `http://derek:10081` or `http://vyas:10081`. Port 3000 is the Selkies port and is not open in this image. `docker compose logs derek`.
-- **Mint desktop asks for `headless`.** The entrypoint did not rename the account. `docker compose logs derek` and confirm `DESKTOP_USER` is `van`.
+- **Mint desktop asks for `headless` or `van`.** The entrypoint did not create the per-desktop account. `docker compose logs derek` and confirm `DEREK_USER` (default `derek`) or `VYAS_USER` (default `vyas`).
