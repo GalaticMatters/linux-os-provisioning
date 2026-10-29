@@ -39,7 +39,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 
-Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. They stay behind Caddy on the server. Do not put Kali on macvlan. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
+Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. They stay behind Caddy on the server. Do not put Kali on macvlan. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the Kali container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
 
 All 30 Kali containers share one image, `lscr.io/linuxserver/kali-linux:latest`. There is one copy of that image on disk.
 
@@ -53,14 +53,21 @@ cp .env.example .env
 ./scripts/lab.sh on
 ```
 
-`dns-on` starts only dnsmasq. `on` starts the fleet, Caddy, the persistent desktops (kali111, ubuntu100, ubuntu111, derek, vyas, and ubuntuserver), and the scheduler. It does not start or stop DNS. Day to day:
+Start DNS once. `dns-on` starts only dnsmasq. `on` starts the fleet, Caddy, the persistent desktops (kali111, ubuntu100, ubuntu111, derek, vyas, and ubuntuserver), and the scheduler. It does not start or stop DNS. Day to day, DNS stays up:
 
 ```sh
 ./scripts/lab.sh off
 ./scripts/lab.sh on
 ```
 
-`off` stops the desktops and leaves dnsmasq running, so names such as `cybersecurity.lan` still resolve and you can turn the lab back on. `./scripts/lab.sh dns-off` stops the resolver itself.
+`off` stops the desktops and leaves dnsmasq running, so names such as `cybersecurity.lan` still resolve and you can turn the lab back on. `./scripts/lab.sh dns-off` stops only dnsmasq.
+
+When names are down, use the console or `10.0.253.1`, then:
+
+```sh
+./scripts/lab.sh dns-on
+./scripts/lab.sh on
+```
 
 `.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on` and `off`, so a copied `.env` cannot pull dnsmasq into a lab reset. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
 
@@ -127,7 +134,7 @@ Host keys are created when the container starts (`ssh-keygen -A`). They are not 
 
 Ubuntu is attached to the `cybersecurity-macvlan` network (`driver: macvlan`, parent `PARENT_IFACE`). Each service has a fixed `ipv4_address`, and dnsmasq (and `dns/hosts.example`) has a matching A record.
 
-The Docker host cannot reach those addresses. The kernel does not deliver packets from the parent NIC to a macvlan child on that same NIC, so `ssh student@ubuntu01...` from this server fails even when DNS is right. Workstations on the LAN can connect. From the host, use the container directly:
+The ProLiant cannot ping macvlan addresses such as `10.0.253.11` (`ubuntu01`). Lab PCs can. The kernel does not deliver packets from the parent NIC to a macvlan child on that same NIC, so `ssh student@ubuntu01...` from this server fails even when DNS is right. A lab PC can open that SSH session. From the host, use the container directly:
 
 ```sh
 docker exec -it ubuntu01 bash
@@ -163,13 +170,13 @@ docker compose up -d --build --remove-orphans
 
 [`scripts/render.py`](scripts/render.py) rewrites `compose.yaml`, `caddy/Caddyfile`, `caddy/site/index.html`, `dns/records.conf`, and `dns/hosts.example`. Re-run it after changing `KALI_COUNT`, `UBUNTU_COUNT`, `UBUNTU_IP_START`, `BASE_DOMAIN`, `SERVER_IP`, or `SSH_USER`. A smaller count leaves the old containers until `--remove-orphans`. The 02:00 job does not remove orphans.
 
-`docker compose up` with the committed files starts all 60. The generator is how you change that number; you do not copy services by hand.
+`docker compose up` with the committed files starts all 60. If `.env` still has `COMPOSE_PROFILES=dns`, that command also starts dnsmasq. Day to day, `./scripts/lab.sh off` and `./scripts/lab.sh on` leave DNS up. The generator is how you change that number; you do not copy services by hand.
 
 ## Resources
 
 There is one Kali image on disk. RAM is per running desktop: about 1–2 GB for the session, plus a tmpfs home up to `DESKTOP_TMPFS_SIZE` (default 2 GB, only written files count) and a 1 GB shared-memory ceiling. Thirty desktops at once is tens of GB of RAM. Lower `KALI_COUNT` on a small host. The Ubuntu image is built once (`ubuntu:24.04` plus OpenSSH) and each server is only `sshd`.
 
-Every container Compose defines has `mem_limit: 4g`: the Kali fleet, the Ubuntu fleet, the persistent desktops (kali111, ubuntu100, ubuntu111, derek, vyas), ubuntuserver, Caddy, dnsmasq, the scheduler, and cloudflared. That is a ceiling. Docker does not reserve 4 GB for an idle container.
+Every container Compose defines has `mem_limit: 4g`: the Kali fleet, the Ubuntu fleet, the persistent desktops (kali111, ubuntu100, ubuntu111, derek, vyas), ubuntuserver, Caddy, dnsmasq, the scheduler, and cloudflared. That is a ceiling. Docker does not reserve 4 GB for an idle container. Desktops still have `shm_size: "1gb"`: the Kali fleet, kali111, ubuntu100, ubuntu111, derek, and vyas.
 
 ## DNS
 
@@ -177,7 +184,7 @@ Pick one. You do not need all three.
 
 ### Bundled dnsmasq
 
-The `dnsmasq` service listens on `SERVER_IP:53`. It answers the apex and each `kaliNN` name with `SERVER_IP`, and each `ubuntuNN` name with that container’s macvlan address. Other names go to `UPSTREAM_DNS_1` and `UPSTREAM_DNS_2` (1.1.1.1 and 1.0.0.1 unless you change them).
+Start it once with `./scripts/lab.sh dns-on`. `off` and `on` leave it running. `dns-off` stops only dnsmasq. The `dnsmasq` service listens on `SERVER_IP:53`. It answers the apex and each `kaliNN` name with `SERVER_IP`, and each `ubuntuNN` name with that container’s macvlan address. Other names go to `UPSTREAM_DNS_1` and `UPSTREAM_DNS_2` (1.1.1.1 and 1.0.0.1 unless you change them).
 
 There is no wildcard for the zone. A wildcard would send the Ubuntu names to `SERVER_IP`.
 
@@ -192,19 +199,18 @@ The first should print `10.0.253.1`. The second should print `10.0.253.11` (`ubu
 
 `SERVER_IP` is substituted when dnsmasq starts. Ubuntu addresses are already written in [`dns/records.conf`](dns/records.conf).
 
-If port 53 on `SERVER_IP` is taken, clear the profile so Compose does not bind it:
+If port 53 on `SERVER_IP` is taken, do not run `./scripts/lab.sh dns-on`. Clear the profile so a plain `docker compose up` does not bind it:
 
 ```sh
 # .env
 COMPOSE_PROFILES=
-docker compose up -d --build
 ```
 
 `ss -ulpn | grep ':53'` shows what owns the port. systemd-resolved on `127.0.0.53` does not block `SERVER_IP:53`.
 
 ### You already run dnsmasq
 
-Leave `COMPOSE_PROFILES` empty. Install the generated records on that resolver. Replace the placeholders, then restart dnsmasq:
+Leave `COMPOSE_PROFILES` empty, and do not run `./scripts/lab.sh dns-on`. Install the generated records on that resolver. Replace the placeholders, then restart dnsmasq:
 
 ```sh
 sed -e "s/__SERVER_IP__/10.0.253.1/g" -e "s/__BASE_DOMAIN__/cybersecurity.lan/g" \
@@ -274,7 +280,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 
 | Path | Role |
 | --- | --- |
-| `compose.yaml` | Generated. 30 Kali, 30 Ubuntu, persistent desktops, Caddy, dnsmasq, scheduler, cloudflared. `mem_limit: 4g` on every service. |
+| `compose.yaml` | Generated. 30 Kali, 30 Ubuntu, persistent desktops, Caddy, dnsmasq, scheduler, cloudflared. `mem_limit: 4g` on every service. Desktops keep `shm_size: "1gb"`. |
 | `scripts/render.py` | Rebuilds the fleet files from `.env`, including derek and vyas |
 | `mint/entrypoint.sh` | Creates the derek or vyas account, grants sudo, requires that password on HTTP port 3000, then starts Cinnamon |
 | `.env.example` | Domain, timezone, NIC, subnet, counts, SSH placeholders |
@@ -283,6 +289,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `ubuntu/` | Ubuntu Server image: OpenSSH only, host keys at start |
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
+| `scripts/lab.sh` | `dns-on` once, then `off` and `on`. `dns-off` stops only dnsmasq |
 | `scripts/export-ca.sh` | Copy the Caddy root out of the volume |
 | `scripts/reset-now.sh` | Recreate both fleets now |
 
@@ -299,7 +306,8 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 ## Troubleshooting
 
 - **Ubuntu container exits immediately.** Neither `SSH_PUBLIC_KEY` nor `SSH_PASSWORD` is set, or `SSH_USER` is `root` or not a lowercase account name. `docker compose logs ubuntu01`.
-- **SSH from this server times out. SSH from a workstation works.** Macvlan on the same NIC. Use `docker exec` or the shim above.
+- **The ProLiant cannot ping `10.0.253.11` (`ubuntu01`). A lab PC can.** SSH from the ProLiant to that address times out the same way. Macvlan on the same NIC. Use `docker exec` or the shim above.
+- **Names do not resolve.** dnsmasq is stopped. From the console, or from `10.0.253.1`, run `./scripts/lab.sh dns-on`, then `./scripts/lab.sh on`.
 - **SSH from the LAN times out.** `PARENT_IFACE` is wrong, the address is outside the real subnet, or the switch is dropping the extra MAC.
 - **`known_hosts` mismatch.** The 02:00 reset replaced the host keys. Remove the old line and connect again.
 - **Certificate warning.** The CA is not installed on that workstation, or the data volume was recreated. Export it again.
