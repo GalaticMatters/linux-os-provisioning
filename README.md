@@ -41,10 +41,20 @@ All 30 Kali containers share one image, `lscr.io/linuxserver/kali-linux:latest`.
 cp .env.example .env
 # Edit PARENT_IFACE, LAN_SUBNET, LAN_GATEWAY, UBUNTU_IP_START,
 # SERVER_IP, TZ, SSH_USER, and a key or password.
-docker compose up -d --build
+./scripts/lab.sh dns-on
+./scripts/lab.sh on
 ```
 
-That starts all 60 fleet containers, plus Caddy and the scheduler. `.env.example` sets `COMPOSE_PROFILES=dns`, so a copied `.env` also starts dnsmasq. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
+`dns-on` starts only dnsmasq. `on` starts the fleet, Caddy, the persistent desktops, and the scheduler. It does not start or stop DNS. Day to day:
+
+```sh
+./scripts/lab.sh off
+./scripts/lab.sh on
+```
+
+`off` stops the desktops and leaves dnsmasq running, so names such as `cybersecurity.lan` still resolve and you can turn the lab back on. `./scripts/lab.sh dns-off` stops the resolver itself.
+
+`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on` and `off`, so a copied `.env` cannot pull dnsmasq into a lab reset. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
 
 The first start pulls the Kali image (about 4.8 GB). Watch `docker compose ps` and `docker compose logs -f caddy`. Then install the CA and open <https://cybersecurity.lan>.
 
