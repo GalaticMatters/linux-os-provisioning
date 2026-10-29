@@ -173,7 +173,6 @@ if ! bash -c 'echo >/dev/tcp/127.0.0.1/6080' 2>/dev/null; then
 fi
 echo "Cinnamon started for ${user}"
 EOF
-EOF
 chmod 755 /usr/local/bin/mint-start-session.sh
 
 cat > /usr/local/bin/mint-login.py << 'EOF'
