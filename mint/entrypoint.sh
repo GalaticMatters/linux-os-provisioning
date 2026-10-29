@@ -243,9 +243,67 @@ if ! session_alive; then
   tail -n 30 /run/mint-session.log >&2 || true
   exit 1
 fi
-if ! bash -c 'echo >/dev/tcp/127.0.0.1/6080' 2>/dev/null; then
-  websockify --web /usr/share/novnc --heartbeat 30 127.0.0.1:6080 127.0.0.1:5901 >>/run/mint-websockify.log 2>&1 &
-fi
+proxy_serves_vnc() {
+  python3 - << 'PY'
+import sys
+from urllib.request import urlopen
+try:
+    with urlopen("http://127.0.0.1:6080/vnc.html", timeout=2) as resp:
+        body = resp.read(16384)
+        ok = resp.status == 200 and (b"noVNC" in body or b"novnc" in body.lower())
+except Exception:
+    ok = False
+sys.exit(0 if ok else 1)
+PY
+}
+
+# Cinnamon can be up before websockify binds. Do not tell the login page
+# to redirect until /vnc.html itself answers.
+ensure_novnc_proxy() {
+  local i tries
+  tries=0
+  for i in $(seq 1 180); do
+    if proxy_serves_vnc; then
+      echo "noVNC proxy is serving /vnc.html" >&2
+      return 0
+    fi
+    if ! command -v websockify >/dev/null 2>&1 || [ ! -f /usr/share/novnc/vnc.html ]; then
+      if apt_locked; then
+        if [ "$i" = 1 ] || [ $((i % 15)) -eq 0 ]; then
+          echo "Waiting for websockify and noVNC to finish installing" >&2
+        fi
+        sleep 1
+        continue
+      fi
+      tries=$((tries + 1))
+      if [ "$tries" -gt 3 ]; then
+        echo "websockify or noVNC is not installed" >&2
+        return 1
+      fi
+      echo "Installing websockify and novnc before opening the desktop" >&2
+      apt-get update -o DPkg::Lock::Timeout=600 || echo "ERROR: apt-get update failed" >&2
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        -o DPkg::Lock::Timeout=600 \
+        websockify novnc \
+        || echo "ERROR: apt-get install failed" >&2
+      hash -r
+      continue
+    fi
+    if [ -f /run/mint-websockify.pid ] && kill -0 "$(cat /run/mint-websockify.pid)" 2>/dev/null; then
+      sleep 0.5
+      continue
+    fi
+    echo "Starting websockify for /vnc.html" >&2
+    websockify --web /usr/share/novnc --heartbeat 30 127.0.0.1:6080 127.0.0.1:5901 >>/run/mint-websockify.log 2>&1 &
+    { echo $! > /run/mint-websockify.pid; } 2>/dev/null || true
+    sleep 0.5
+  done
+  echo "noVNC proxy did not serve /vnc.html" >&2
+  tail -n 30 /run/mint-websockify.log >&2 || true
+  return 1
+}
+
+ensure_novnc_proxy || exit 1
 echo "Cinnamon started for ${user}"
 EOF
 chmod 755 /usr/local/bin/mint-start-session.sh || log "ERROR: chmod failed for mint-start-session.sh"
@@ -261,6 +319,8 @@ import secrets
 import socket
 import subprocess
 import threading
+import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
@@ -385,6 +445,26 @@ def page(error: str, username: str) -> bytes:
     return html.encode()
 
 
+def proxy_serves_vnc() -> bool:
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:6080/vnc.html", timeout=2) as resp:
+            body = resp.read(16384)
+            return resp.status == 200 and (b"noVNC" in body or b"novnc" in body.lower())
+    except OSError:
+        return False
+
+
+def wait_for_proxy(seconds: float = 90) -> bool:
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if proxy_serves_vnc():
+            print("noVNC proxy is serving /vnc.html", flush=True)
+            return True
+        time.sleep(0.25)
+    print("noVNC proxy did not serve /vnc.html", flush=True)
+    return False
+
+
 def start_desktop() -> None:
     result = subprocess.run(
         ["/usr/local/bin/mint-start-session.sh", ACCOUNT or ""],
@@ -433,6 +513,9 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, subprocess.SubprocessError):
             self._form("The desktop did not start.", username)
             return
+        if not wait_for_proxy():
+            self._form("The desktop did not start. The noVNC proxy did not serve /vnc.html.", username)
+            return
         body = b""
         self.send_response(303)
         self.send_header("Location", NOVNC)
@@ -449,6 +532,17 @@ class Handler(BaseHTTPRequestHandler):
             self._form("", "")
             return
         if path in ("/", "/login") and signed_in:
+            try:
+                start_desktop()
+            except subprocess.CalledProcessError as exc:
+                self._form("The desktop did not start. " + str(exc.stderr or ""), ACCOUNT or "")
+                return
+            except (OSError, subprocess.SubprocessError):
+                self._form("The desktop did not start.", ACCOUNT or "")
+                return
+            if not wait_for_proxy():
+                self._form("The desktop did not start. The noVNC proxy did not serve /vnc.html.", ACCOUNT or "")
+                return
             self.send_response(303)
             self.send_header("Location", NOVNC)
             self.send_header("Content-Length", "0")
@@ -468,6 +562,9 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, subprocess.SubprocessError):
             self._form("The desktop did not start.", ACCOUNT or "")
             return
+        if not wait_for_proxy():
+            self._form("The desktop did not start. The noVNC proxy did not serve /vnc.html.", ACCOUNT or "")
+            return
         self._proxy()
 
     def _form(self, error: str, username: str) -> None:
@@ -480,10 +577,13 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _proxy(self) -> None:
+        if not proxy_serves_vnc() and not wait_for_proxy():
+            self._form("The desktop is still starting. Wait a moment and sign in again.", ACCOUNT or "")
+            return
         try:
             backend = socket.create_connection(("127.0.0.1", 6080), timeout=10)
         except OSError:
-            self.send_error(502, "desktop proxy is not ready")
+            self._form("The desktop is still starting. Wait a moment and sign in again.", ACCOUNT or "")
             return
         request = f"{self.command} {self.path} HTTP/1.1\r\n"
         for key, value in self.headers.items():
