@@ -396,11 +396,11 @@ services:
     networks: [desktop]
     logging: *json-logs
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3389'"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 180s
+      start_period: 300s
 
   vyas:
     image: dockerscripts/linuxmint:cinnamon
@@ -426,11 +426,11 @@ services:
     networks: [desktop]
     logging: *json-logs
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3389'"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 180s
+      start_period: 300s
 
   ubuntuserver:
     image: cybersecurity-ubuntu-ssh:1

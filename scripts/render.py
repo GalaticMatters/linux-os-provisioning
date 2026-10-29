@@ -146,9 +146,10 @@ def fleet_names(prefix: str, count: int) -> list[str]:
 
 
 def render_mint(name: str) -> list[str]:
-    """Persistent Linux Mint Cinnamon desktop. No fleet.reset label.
+    """Persistent Linux Mint Cinnamon desktop served over HTTP. No fleet.reset label.
 
     derek uses DEREK_USER / DEREK_PASSWORD. vyas uses VYAS_USER / VYAS_PASSWORD.
+    The browser origin is http://<name>:3000. RDP is not the public path.
     """
     key = name.upper()
     return [
@@ -176,11 +177,11 @@ def render_mint(name: str) -> list[str]:
         "    networks: [desktop]",
         "    logging: *json-logs",
         "    healthcheck:",
-        '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3389\'"]',
+        '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3000\'"]',
         "      interval: 30s",
         "      timeout: 5s",
         "      retries: 5",
-        "      start_period: 180s",
+        "      start_period: 300s",
         "",
     ]
 
@@ -595,9 +596,9 @@ def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_cou
         f"ubuntu100 keeps its files on a 500 GB disk. Open them at "
         f"https://kali111.{domain}/, https://ubuntu100.{domain}/, and https://ubuntu111.{domain}/. "
         "derek and vyas are persistent Linux Mint Cinnamon desktops with Firefox. "
-        "They are not on this page. Open them over RDP at derek.research101.stream "
-        "and vyas.research101.stream. derek signs in as DEREK_USER (default derek). "
-        "vyas signs in as VYAS_USER (default vyas). sudo uses that password.",
+        "They are not on this page. Open them in a browser at derek.research101.stream "
+        "and vyas.research101.stream. The session is already signed in as DEREK_USER "
+        "(default derek) or VYAS_USER (default vyas). sudo uses that password.",
     )
     return html
 
