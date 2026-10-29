@@ -73,7 +73,7 @@ chmod 755 /usr/local/bin/mint-xstartup
 
 cat > /usr/local/bin/mint-start-session.sh << 'EOF'
 #!/bin/bash
-# Start Cinnamon for the signed-in account. Safe to call more than once.
+# Start Cinnamon after a successful login. Safe to call again.
 set -eu
 user=${1:-}
 home="/home/${user}"
@@ -85,30 +85,13 @@ if [ ! -x /usr/bin/cinnamon-session ]; then
   echo "cinnamon-session is not installed" >&2
   exit 1
 fi
-
-mkdir -p /run /tmp/.X11-unix /var/log
-chmod 1777 /tmp/.X11-unix
-exec 9>/run/mint-session.lock
-flock 9
-
-session_up() {
-  [ -S /tmp/.X11-unix/X1 ] || return 1
-  [ -f /run/mint-session.pid ] || return 1
-  kill -0 "$(cat /run/mint-session.pid)" 2>/dev/null
-}
-
-if session_up; then
-  exit 0
+if ! command -v Xtigervnc >/dev/null 2>&1 || ! command -v runuser >/dev/null 2>&1; then
+  echo "Xtigervnc or runuser is not installed" >&2
+  exit 1
 fi
 
-if [ -f /run/mint-vnc.pid ]; then
-  kill "$(cat /run/mint-vnc.pid)" 2>/dev/null || true
-fi
-if [ -f /run/mint-session.pid ]; then
-  kill "$(cat /run/mint-session.pid)" 2>/dev/null || true
-fi
-rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
-
+mkdir -p /tmp/.X11-unix "/run/user"
+chmod 1777 /tmp/.X11-unix || true
 uid=$(id -u "$user")
 runtime="/run/user/${uid}"
 mkdir -p "$runtime"
@@ -117,42 +100,79 @@ chmod 700 "$runtime"
 touch "$home/.Xauthority"
 chown "$user:$user" "$home/.Xauthority"
 chmod 600 "$home/.Xauthority"
+touch /run/mint-vnc.log /run/mint-session.log
 
-runuser -u "$user" -- /usr/bin/Xtigervnc :1 \
-  -auth "$home/.Xauthority" \
-  -geometry 1920x1080 \
-  -depth 24 \
-  -rfbport 5901 \
-  -localhost=1 \
-  -SecurityTypes None \
-  -AlwaysShared \
-  -DisconnectClients=0 \
-  -desktop "Linux Mint" >>/var/log/mint-desktop.log 2>&1 &
-echo $! > /run/mint-vnc.pid
+vnc_alive() {
+  [ -f /run/mint-vnc.pid ] || return 1
+  kill -0 "$(cat /run/mint-vnc.pid)" 2>/dev/null
+}
+session_alive() {
+  [ -f /run/mint-session.pid ] || return 1
+  kill -0 "$(cat /run/mint-session.pid)" 2>/dev/null
+}
+
+# A previous attempt may still be opening the display. Do not kill it.
+if ! vnc_alive || [ ! -S /tmp/.X11-unix/X1 ]; then
+  if vnc_alive; then
+    kill "$(cat /run/mint-vnc.pid)" 2>/dev/null || true
+    sleep 0.2
+  fi
+  rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
+  runuser -u "$user" -- /usr/bin/Xtigervnc :1 \
+    -auth "$home/.Xauthority" \
+    -geometry 1920x1080 \
+    -depth 24 \
+    -rfbport 5901 \
+    -localhost=1 \
+    -SecurityTypes None \
+    -AlwaysShared \
+    -DisconnectClients=0 \
+    -desktop "Linux Mint" >>/run/mint-vnc.log 2>&1 &
+  echo $! > /run/mint-vnc.pid
+  echo "Xtigervnc starting for ${user}" >&2
+fi
 
 ready=0
-for _ in $(seq 1 100); do
+for _ in $(seq 1 450); do
   if [ -S /tmp/.X11-unix/X1 ]; then
     ready=1
     break
+  fi
+  if ! vnc_alive; then
+    echo "Xtigervnc exited before opening a display" >&2
+    tail -n 30 /run/mint-vnc.log >&2 || true
+    exit 1
   fi
   sleep 0.1
 done
 if [ "$ready" != 1 ]; then
   echo "Xtigervnc did not open a display" >&2
+  tail -n 30 /run/mint-vnc.log >&2 || true
   exit 1
 fi
 
-runuser -u "$user" -- env \
-  HOME="$home" \
-  USER="$user" \
-  LOGNAME="$user" \
-  DISPLAY=:1 \
-  XAUTHORITY="$home/.Xauthority" \
-  XDG_RUNTIME_DIR="$runtime" \
-  /usr/local/bin/mint-xstartup >>/var/log/mint-desktop.log 2>&1 &
-echo $! > /run/mint-session.pid
+if ! session_alive; then
+  runuser -u "$user" -- env \
+    HOME="$home" \
+    USER="$user" \
+    LOGNAME="$user" \
+    DISPLAY=:1 \
+    XAUTHORITY="$home/.Xauthority" \
+    XDG_RUNTIME_DIR="$runtime" \
+    /usr/local/bin/mint-xstartup >>/run/mint-session.log 2>&1 &
+  echo $! > /run/mint-session.pid
+fi
+sleep 1
+if ! session_alive; then
+  echo "cinnamon-session exited" >&2
+  tail -n 30 /run/mint-session.log >&2 || true
+  exit 1
+fi
+if ! bash -c 'echo >/dev/tcp/127.0.0.1/6080' 2>/dev/null; then
+  websockify --web /usr/share/novnc --heartbeat 30 127.0.0.1:6080 127.0.0.1:5901 >>/run/mint-websockify.log 2>&1 &
+fi
 echo "Cinnamon started for ${user}"
+EOF
 EOF
 chmod 755 /usr/local/bin/mint-start-session.sh
 
@@ -292,7 +312,20 @@ def page(error: str, username: str) -> bytes:
 
 
 def start_desktop() -> None:
-    subprocess.run(["/usr/local/bin/mint-start-session.sh", ACCOUNT], check=True, timeout=30)
+    result = subprocess.run(
+        ["/usr/local/bin/mint-start-session.sh", ACCOUNT or ""],
+        check=False,
+        timeout=90,
+        capture_output=True,
+        text=True,
+    )
+    if result.stdout:
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n", flush=True)
+    if result.stderr:
+        print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", flush=True)
+    if result.returncode != 0:
+        lines = (result.stderr or result.stdout or "desktop did not start").strip().splitlines()
+        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, lines[-1] if lines else "")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -320,8 +353,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             start_desktop()
+        except subprocess.CalledProcessError as exc:
+            self._form("The desktop did not start. " + str(exc.stderr or ""), username)
+            return
         except (OSError, subprocess.SubprocessError):
-            self._form("The desktop did not start. See docker compose logs.", username)
+            self._form("The desktop did not start.", username)
             return
         body = b""
         self.send_response(303)
@@ -352,8 +388,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             start_desktop()
+        except subprocess.CalledProcessError as exc:
+            self._form("The desktop did not start. " + str(exc.stderr or ""), ACCOUNT or "")
+            return
         except (OSError, subprocess.SubprocessError):
-            self._form("The desktop did not start. See docker compose logs.", ACCOUNT or "")
+            self._form("The desktop did not start.", ACCOUNT or "")
             return
         self._proxy()
 
