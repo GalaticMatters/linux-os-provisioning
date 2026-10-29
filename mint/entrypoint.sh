@@ -178,30 +178,51 @@ ACCOUNT = sys_account = None  # set from argv in main
 SECRET = secrets.token_bytes(32)
 COOKIE = "mint_session"
 NOVNC = "/vnc.html?autoconnect=1&resize=scale&reconnect=1"
-LIBCRYPT = ctypes.CDLL(ctypes.util.find_library("crypt"))
-LIBCRYPT.crypt.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
-LIBCRYPT.crypt.restype = ctypes.c_char_p
+# Loaded on the first sign-in, not at import. find_library() is often None
+# in a container, and CDLL(None) raises before the socket would bind.
+_CRYPT = None
+_CRYPT_TRIED = False
 
 
 def shadow_hash(password: str, salt: str) -> str:
-    hashed = LIBCRYPT.crypt(password.encode(), salt.encode())
+    global _CRYPT, _CRYPT_TRIED
+    if not _CRYPT_TRIED:
+        _CRYPT_TRIED = True
+        names = []
+        found = ctypes.util.find_library("crypt")
+        if found:
+            names.append(found)
+        names.extend(["libcrypt.so.1", "libcrypt.so.2"])
+        for name in names:
+            try:
+                lib = ctypes.CDLL(name)
+                fn = lib.crypt
+                fn.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+                fn.restype = ctypes.c_char_p
+                _CRYPT = fn
+                break
+            except (OSError, AttributeError):
+                continue
+    if _CRYPT is None:
+        raise OSError("libcrypt is not available")
+    hashed = _CRYPT(password.encode(), salt.encode())
     if not hashed:
         return ""
     return hashed.decode()
 
 
 def account_ok(username: str, password: str) -> bool:
-    if ACCOUNT is None or username != ACCOUNT or not password:
+    if not ACCOUNT or username != ACCOUNT or not password:
         return False
     try:
         with open("/etc/shadow", encoding="utf-8") as handle:
             row = next(line for line in handle if line.startswith(ACCOUNT + ":"))
-    except (OSError, StopIteration):
+        hashed = row.split(":", 2)[1]
+        if not hashed or hashed[0] in "!*":
+            return False
+        return hmac.compare_digest(shadow_hash(password, hashed), hashed)
+    except (OSError, StopIteration, ValueError):
         return False
-    hashed = row.split(":", 2)[1]
-    if not hashed or hashed[0] in "!*" :
-        return False
-    return hmac.compare_digest(shadow_hash(password, hashed), hashed)
 
 
 def session_cookie() -> str:
@@ -393,11 +414,14 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     global ACCOUNT
     import sys
-    if len(sys.argv) != 2 or not USER_RE.fullmatch(sys.argv[1]):
-        raise SystemExit("usage: mint-login.py ACCOUNT")
-    ACCOUNT = sys.argv[1]
+    account = sys.argv[1] if len(sys.argv) == 2 else ""
+    if not USER_RE.fullmatch(account):
+        print("mint-login: account name missing; the login page stays up and sign-in fails", flush=True)
+        account = ""
+    ACCOUNT = account
+    # Bind before any desktop or libcrypt work. Cloudflare 502 means this socket is down.
     server = ThreadingHTTPServer(("0.0.0.0", 3000), Handler)
-    print(f"Mint login on http://0.0.0.0:3000 for {ACCOUNT}", flush=True)
+    print(f"Mint login on http://0.0.0.0:3000 for {ACCOUNT or 'unset'}", flush=True)
     server.serve_forever()
 
 
@@ -410,15 +434,11 @@ cat > /usr/local/bin/mint-desktop.sh << 'EOF'
 #!/bin/bash
 set -eu
 user='@MINT_USER@'
-websockify --web /usr/share/novnc --heartbeat 30 127.0.0.1:6080 127.0.0.1:5901 &
-ws_pid=$!
-sleep 0.3
-if ! kill -0 "$ws_pid" 2>/dev/null; then
-  echo "websockify failed to start" >&2
-  exit 1
-fi
-echo "Mint login HTTP on port 3000 for ${user}"
-exec python3 /usr/local/bin/mint-login.py "$user"
+mkdir -p /var/log
+# Local noVNC backend only. A failure here must not stop port 3000.
+websockify --web /usr/share/novnc --heartbeat 30 127.0.0.1:6080 127.0.0.1:5901 >>/var/log/mint-websockify.log 2>&1 &
+echo "starting Mint login on port 3000 for ${user}"
+exec python3 -u /usr/local/bin/mint-login.py "$user"
 EOF
 sed -i "s/@MINT_USER@/${user}/" /usr/local/bin/mint-desktop.sh
 chmod 755 /usr/local/bin/mint-desktop.sh

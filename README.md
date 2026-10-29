@@ -307,5 +307,6 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **502 from Caddy.** That Kali container is still starting, or the image is still downloading. `docker compose logs kali01`.
 - **Page loads, black screen.** The browser is not on HTTPS, or something is stripping WebSocket upgrades. Caddy forwards them.
 - **Reset did not run.** `docker compose logs scheduler` should show the timezone at start and a `reset:` line after 02:00. `docker compose exec scheduler date` should match `TZ`.
-- **derek or vyas is a blank page.** The public hostname must be service type HTTP, origin `http://derek:3000` or `http://vyas:3000`. RDP on 3389 does not render in a browser. Replace the RDP route. The first start installs noVNC before port 3000 answers. `docker compose logs derek`.
+- **502 Bad gateway on derek or vyas.** Cloudflare reached the tunnel and nothing accepted HTTP on port 3000. `docker compose logs derek` should include `Mint login on http://0.0.0.0:3000`. The first start installs noVNC before that line. Origins stay `http://derek:3000` and `http://vyas:3000`.
+- **derek or vyas is a blank page.** The public hostname must be service type HTTP, origin `http://derek:3000` or `http://vyas:3000`. RDP does not render in a browser. Replace an RDP route.
 - **The Mint login is rejected.** `DEREK_PASSWORD` or `VYAS_PASSWORD` is empty, or the container was not recreated after the password changed. The entrypoint resets the password from `.env` on start. The same password is used for `sudo` after Cinnamon starts.
