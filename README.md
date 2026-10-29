@@ -20,6 +20,8 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `TZ` | Timezone of the 02:00 reset. A tz database name (`UTC`, `America/New_York`), not a UTC offset. The host clock’s timezone is not used. |
 | `SSH_USER` | Account on every Ubuntu server. Not `root`. |
 | `SSH_PUBLIC_KEY` or `SSH_PASSWORD` | At least one. One single-line OpenSSH public key, and/or a single-line password. |
+| `DESKTOP_USER` | Account on the persistent desktops, including derek and vyas. Default `van`. |
+| `DESKTOP_PASSWORD` | Password for that account. Put it only in `.env`. Do not commit it. |
 
 `KALI_COUNT` and `UBUNTU_COUNT` default to 30. The repo already contains that render, so a copied `.env` can start all 60 without running the generator first.
 
@@ -30,6 +32,8 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `https://cybersecurity.lan` | `10.0.253.1` (`SERVER_IP`) | List of Kali desktops, and the SSH names |
 | `https://kali01.cybersecurity.lan` … `kali30.cybersecurity.lan` | `10.0.253.1` (`SERVER_IP`) | Kali KDE in the browser. Two-digit names. Behind Caddy on the server, not on macvlan. |
 | `ssh student@ubuntu01.cybersecurity.lan` … `ubuntu30` | `10.0.253.11` … `10.0.253.40` | Ubuntu Server, one macvlan address each, SSH port 22 only |
+| `https://derek.research101.stream` | Cloudflare to `http://derek:10081` | Persistent Linux Mint Cinnamon. Not wiped at 02:00. |
+| `https://vyas.research101.stream` | Cloudflare to `http://vyas:10081` | Persistent Linux Mint Cinnamon. Not wiped at 02:00. |
 
 Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. They stay behind Caddy on the server. Do not put Kali on macvlan. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
 
@@ -45,7 +49,7 @@ cp .env.example .env
 ./scripts/lab.sh on
 ```
 
-`dns-on` starts only dnsmasq. `on` starts the fleet, Caddy, the persistent desktops, and the scheduler. It does not start or stop DNS. Day to day:
+`dns-on` starts only dnsmasq. `on` starts the fleet, Caddy, the persistent desktops (kali111, ubuntu100, ubuntu111, derek, vyas, and ubuntuserver), and the scheduler. It does not start or stop DNS. Day to day:
 
 ```sh
 ./scripts/lab.sh off
@@ -68,6 +72,36 @@ docker compose pull kali01
 ```
 
 Every Kali service uses the same image, so pulling one updates the image for the fleet. The reset recreates the containers onto it.
+
+## Mint desktops
+
+`derek` and `vyas` are persistent Linux Mint Cinnamon desktops. They sit on the Compose network `desktop` (`cybersecurity-desktop`), so the existing `cloudflared` container can reach them by service name. They are not on macvlan and they do not take a LAN address.
+
+`lscr.io/linuxserver/webtop` has no Mint tag. Checked on 29 October 2026: Docker Hub tag queries for `mint`, `cinnamon`, `linuxmint`, and `lmde` each returned zero tags, and a walk of the ghcr.io `linuxserver/webtop` tag list (20,000 tags) contained none of those names. `linuxserver/rdesktop` has no Mint tag either. These two desktops use the published image `infrastlabs/docker-headless:cinna`. That image installs `mint-meta-cinnamon` (Cinnamon, not a minimal window manager) and serves it with noVNC. The HTTP port is **10081**. SSH is 10022 and RDP is 10089 inside the image; Cloudflare uses the HTTP port. This is not the Selkies 3000/3001 pair the Kali and Ubuntu webtops use.
+
+The account is `van` (`DESKTOP_USER`). The image signs in as `headless`; [`mint/entrypoint.sh`](mint/entrypoint.sh) renames that account to `van` before the desktop starts. The password is `DESKTOP_PASSWORD` from `.env`, for both the account and noVNC. Homes are the named volumes `cybersecurity-derek-config` and `cybersecurity-vyas-config`, mounted at `/home/van`. Neither service has `fleet.reset: "true"`, so the 02:00 job does not recreate them.
+
+Do not add a second tunnel token. `cloudflared` (profile `public`) is the tunnel already in this Compose file. In the Cloudflare Zero Trust dashboard, on that same tunnel, add public hostnames. The service type is **HTTP**:
+
+| Public hostname | Service |
+| --- | --- |
+| `derek.research101.stream` | `http://derek:10081` |
+| `vyas.research101.stream` | `http://vyas:10081` |
+
+Cloudflare terminates HTTPS for those public names. The origin stays HTTP on port 10081.
+
+On the ProLiant, from this repo:
+
+```sh
+git pull
+# .env must already set DESKTOP_PASSWORD. Do not commit it.
+docker compose pull derek vyas
+./scripts/lab.sh on
+```
+
+`lab.sh on` starts derek and vyas with the rest of the lab. If `CLOUDFLARE_TUNNEL_TOKEN` is set, it also starts the existing `cloudflared`. It does not start or stop dnsmasq. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
+
+`START_SYSTEMD` is `false`, so Cinnamon is started by the image's supervisor. The containers stay on the `desktop` network.
 
 ## SSH
 
@@ -130,6 +164,8 @@ docker compose up -d --build --remove-orphans
 ## Resources
 
 There is one Kali image on disk. RAM is per running desktop: about 1–2 GB for the session, plus a tmpfs home up to `DESKTOP_TMPFS_SIZE` (default 2 GB, only written files count) and a 1 GB shared-memory ceiling. Thirty desktops at once is tens of GB of RAM. Lower `KALI_COUNT` on a small host. The Ubuntu image is built once (`ubuntu:24.04` plus OpenSSH) and each server is only `sshd`.
+
+Every container Compose defines has `mem_limit: 4g`: the Kali fleet, the Ubuntu fleet, the persistent desktops (kali111, ubuntu100, ubuntu111, derek, vyas), ubuntuserver, Caddy, dnsmasq, the scheduler, and cloudflared. That is a ceiling. Docker does not reserve 4 GB for an idle container.
 
 ## DNS
 
@@ -210,7 +246,7 @@ Deleting the `cybersecurity-caddy-data` volume creates a new CA. Workstations mu
 The job runs [`scheduler/reset-desktops.sh`](scheduler/reset-desktops.sh), which:
 
 1. Finds the project directory on the host (Compose’s relative paths have to be the host’s paths).
-2. Selects every service labeled `fleet.reset: "true"` (all Kali and Ubuntu services).
+2. Selects every service labeled `fleet.reset: "true"` (the fleet Kali desktops and the fleet Ubuntu SSH servers).
 3. Runs `docker compose up -d --force-recreate --no-deps --renew-anon-volumes` for those services only.
 4. Restarts Caddy so it drops cached Kali addresses. Caddy is not recreated, and its CA volume is not removed.
 
@@ -218,6 +254,7 @@ Recreate replaces the container.
 
 - Kali home is a tmpfs on `/config`. The new container has an empty home. Packages written into the image layer rather than the home are discarded too.
 - Ubuntu has no volume. The writable layer goes away, including the account, `authorized_keys`, and the SSH host keys. The entrypoint creates the account again from `.env` and generates new host keys.
+- derek and vyas are not labeled `fleet.reset`. The job does not recreate them, and `cybersecurity-derek-config` and `cybersecurity-vyas-config` stay.
 
 Caddy, dnsmasq, and the scheduler keep running. The scheduler is not recreated (that would kill the job). It mounts the Docker socket and runs as root, so it can control the daemon.
 
@@ -233,8 +270,9 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 
 | Path | Role |
 | --- | --- |
-| `compose.yaml` | Generated. 30 Kali, 30 Ubuntu, Caddy, dnsmasq, scheduler |
-| `scripts/render.py` | Rebuilds the fleet files from `.env` |
+| `compose.yaml` | Generated. 30 Kali, 30 Ubuntu, persistent desktops, Caddy, dnsmasq, scheduler, cloudflared. `mem_limit: 4g` on every service. |
+| `scripts/render.py` | Rebuilds the fleet files from `.env`, including derek and vyas |
+| `mint/entrypoint.sh` | Renames the Mint image account to `van` and keeps `/home/van` |
 | `.env.example` | Domain, timezone, NIC, subnet, counts, SSH placeholders |
 | `caddy/Caddyfile` | Generated. Internal CA and one site per Kali desktop |
 | `caddy/site/index.html` | Generated page on the apex name |
@@ -246,7 +284,9 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 
 ## Images
 
-`linuxserver/kali-linux:latest` is a Selkies web desktop (KDE, HTTPS on 3001). Checked on Docker Hub on 21 October 2026: digest `sha256:bc00b18887b5b263c03a52282867ac747d5e2a039f93969bb7e3d31b618833a6`, about 4.8 GB. `linuxserver/webtop` has no Kali tag, and this stack does not use webtop.
+`linuxserver/kali-linux:latest` is a Selkies web desktop (KDE, HTTPS on 3001). Checked on Docker Hub on 21 October 2026: digest `sha256:bc00b18887b5b263c03a52282867ac747d5e2a039f93969bb7e3d31b618833a6`, about 4.8 GB. `linuxserver/webtop` has no Kali tag and no Mint tag (checked 29 October 2026).
+
+`derek` and `vyas` use `infrastlabs/docker-headless:cinna` (Linux Mint Cinnamon, noVNC on HTTP 10081). Registry index digest `sha256:e29f8d8c508f287d467e93c18fe869cc8d8bbebd99d071a47f10a2b38fa49086`. The linux/amd64 manifest is `sha256:c149563d135460c6bd1a9d7c7d44e388df53268d4424e01740607f199f24f6e0`, last pushed 9 October 2023.
 
 Ubuntu is a local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04` with `openssh-server`. It is not a browser desktop.
 
@@ -263,3 +303,5 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **502 from Caddy.** That Kali container is still starting, or the image is still downloading. `docker compose logs kali01`.
 - **Page loads, black screen.** The browser is not on HTTPS, or something is stripping WebSocket upgrades. Caddy forwards them.
 - **Reset did not run.** `docker compose logs scheduler` should show the timezone at start and a `reset:` line after 02:00. `docker compose exec scheduler date` should match `TZ`.
+- **derek or vyas does not load through Cloudflare.** The public hostname must be service type HTTP, origin `http://derek:10081` or `http://vyas:10081`. Port 3000 is the Selkies port and is not open in this image. `docker compose logs derek`.
+- **Mint desktop asks for `headless`.** The entrypoint did not rename the account. `docker compose logs derek` and confirm `DESKTOP_USER` is `van`.
