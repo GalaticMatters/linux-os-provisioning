@@ -3,54 +3,66 @@
 # published image has no HTTP port, so this entrypoint serves noVNC on 3000.
 # The browser shows a login page first. Cinnamon starts only after the
 # account password is accepted. xrdp stays masked.
-set -eu
+#
+# Bind 0.0.0.0:3000 before apt, user setup, VNC, and Cinnamon. Those steps
+# can fail or take a long time. Print the error and keep going. Stopping
+# this script before the listener is up is a Cloudflare 502.
+
+set +e
+set +u
+
+log() {
+  printf '%s\n' "$*"
+}
 
 user=${MINT_USER:-}
 home="/home/${user}"
 
+log "Mint entrypoint starting"
+
 if [ -z "$user" ] || [ "$user" = "root" ] || ! printf '%s' "$user" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$'; then
-  echo "MINT_USER must be a lowercase account name other than root (set DEREK_USER or VYAS_USER)" >&2
-  exit 1
+  log "ERROR: MINT_USER must be a lowercase account name other than root (set DEREK_USER or VYAS_USER)"
+  user=""
+  home=""
 fi
 
-if ! command -v sudo >/dev/null 2>&1 \
-  || ! command -v Xtigervnc >/dev/null 2>&1 \
-  || ! command -v websockify >/dev/null 2>&1 \
-  || ! command -v dbus-launch >/dev/null 2>&1 \
-  || ! command -v python3 >/dev/null 2>&1 \
-  || [ ! -f /usr/share/novnc/vnc.html ]; then
-  apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    sudo \
-    python3 \
-    tigervnc-standalone-server \
-    novnc \
-    websockify \
-    dbus-x11 \
-    xfonts-base \
-    libgl1-mesa-dri
-fi
-
-if ! id "$user" >/dev/null 2>&1; then
-  if ! useradd --shell /bin/bash --home-dir "$home" --create-home "$user"; then
-    useradd --shell /bin/bash --home-dir "$home" "$user"
+start_listener() {
+  if bash -c 'echo >/dev/tcp/127.0.0.1/3000' 2>/dev/null; then
+    log "Mint login already listening on http://0.0.0.0:3000"
+    return 0
   fi
-fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    log "ERROR: python3 is not installed, so port 3000 is not open yet"
+    return 1
+  fi
+  if [ ! -f /usr/local/bin/mint-login.py ]; then
+    log "ERROR: /usr/local/bin/mint-login.py is missing, so port 3000 is not open"
+    return 1
+  fi
+  python3 -u /usr/local/bin/mint-login.py "$user" &
+  login_pid=$!
+  mkdir -p /run 2>/dev/null || true
+  { echo "$login_pid" > /run/mint-login.pid; } 2>/dev/null || true
+  ready=0
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    if bash -c 'echo >/dev/tcp/127.0.0.1/3000' 2>/dev/null; then
+      ready=1
+      break
+    fi
+    if ! kill -0 "$login_pid" 2>/dev/null; then
+      break
+    fi
+    sleep 0.2
+  done
+  if [ "$ready" != 1 ]; then
+    log "ERROR: mint-login.py did not bind 0.0.0.0:3000"
+    return 1
+  fi
+  log "Mint login on http://0.0.0.0:3000 for ${user:-unset}"
+  return 0
+}
 
-mkdir -p "$home"
-if [ -z "$(ls -A "$home" 2>/dev/null || true)" ] && [ -d /etc/skel ]; then
-  cp -a /etc/skel/. "$home/"
-fi
-usermod -d "$home" "$user"
-usermod -aG sudo "$user"
-chown -R "$user:$user" "$home"
-
-# Password sudo, reset from .env on every start. The login page checks this hash.
-printf '%s ALL=(ALL:ALL) ALL\n' "$user" > "/etc/sudoers.d/${user}"
-chmod 440 "/etc/sudoers.d/${user}"
-if [ -n "${MINT_PASSWORD:-}" ]; then
-  printf '%s:%s\n' "$user" "$MINT_PASSWORD" | chpasswd
-fi
+mkdir -p /usr/local/bin || log "ERROR: could not create /usr/local/bin"
 
 cat > /usr/local/bin/mint-xstartup << 'EOF'
 #!/bin/sh
@@ -69,7 +81,7 @@ if [ -r /etc/default/locale ]; then
 fi
 exec dbus-launch --exit-with-session /usr/bin/cinnamon-session
 EOF
-chmod 755 /usr/local/bin/mint-xstartup
+chmod 755 /usr/local/bin/mint-xstartup || log "ERROR: chmod failed for mint-xstartup"
 
 cat > /usr/local/bin/mint-start-session.sh << 'EOF'
 #!/bin/bash
@@ -173,7 +185,7 @@ if ! bash -c 'echo >/dev/tcp/127.0.0.1/6080' 2>/dev/null; then
 fi
 echo "Cinnamon started for ${user}"
 EOF
-chmod 755 /usr/local/bin/mint-start-session.sh
+chmod 755 /usr/local/bin/mint-start-session.sh || log "ERROR: chmod failed for mint-start-session.sh"
 
 cat > /usr/local/bin/mint-login.py << 'EOF'
 #!/usr/bin/env python3
@@ -466,26 +478,88 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 EOF
-chmod 755 /usr/local/bin/mint-login.py
+chmod 755 /usr/local/bin/mint-login.py || log "ERROR: chmod failed for mint-login.py"
+
+# The login page has to be reachable before apt. Package install can fail
+# or run for minutes, and either one is a Cloudflare 502 if nothing is listening.
+start_listener || log "ERROR: port 3000 was not bound before setup"
+
+if [ -n "$user" ]; then
+  if ! id "$user" >/dev/null 2>&1; then
+    useradd --shell /bin/bash --home-dir "$home" --create-home "$user" \
+      || useradd --shell /bin/bash --home-dir "$home" "$user" \
+      || log "ERROR: useradd failed for ${user}"
+  fi
+  mkdir -p "$home" || log "ERROR: mkdir failed for ${home}"
+  if [ -d "$home" ] && [ -z "$(ls -A "$home" 2>/dev/null || true)" ] && [ -d /etc/skel ]; then
+    cp -a /etc/skel/. "$home/" || log "ERROR: copy of /etc/skel failed"
+  fi
+  usermod -d "$home" "$user" || log "ERROR: usermod home failed for ${user}"
+  usermod -aG sudo "$user" || log "ERROR: usermod sudo failed for ${user}"
+  chown -R "$user:$user" "$home" || log "ERROR: chown failed for ${home}"
+  mkdir -p /etc/sudoers.d || log "ERROR: could not create /etc/sudoers.d"
+  printf '%s ALL=(ALL:ALL) ALL\n' "$user" > "/etc/sudoers.d/${user}" \
+    || log "ERROR: could not write /etc/sudoers.d/${user}"
+  chmod 440 "/etc/sudoers.d/${user}" || log "ERROR: chmod sudoers failed for ${user}"
+  if [ -n "${MINT_PASSWORD:-}" ]; then
+    printf '%s:%s\n' "$user" "$MINT_PASSWORD" | chpasswd \
+      || log "ERROR: chpasswd failed for ${user}"
+  else
+    log "ERROR: MINT_PASSWORD is empty, so sign-in cannot succeed yet"
+  fi
+fi
+
+need_pkgs=0
+command -v sudo >/dev/null 2>&1 || need_pkgs=1
+command -v Xtigervnc >/dev/null 2>&1 || need_pkgs=1
+command -v websockify >/dev/null 2>&1 || need_pkgs=1
+command -v dbus-launch >/dev/null 2>&1 || need_pkgs=1
+command -v python3 >/dev/null 2>&1 || need_pkgs=1
+[ -f /usr/share/novnc/vnc.html ] || need_pkgs=1
+if [ "$need_pkgs" = 1 ]; then
+  log "Installing desktop packages. Port 3000 stays open if it is already bound."
+  if ! apt-get update 2>&1; then
+    log "ERROR: apt-get update failed"
+  fi
+  if ! DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    sudo \
+    python3 \
+    tigervnc-standalone-server \
+    novnc \
+    websockify \
+    dbus-x11 \
+    xfonts-base \
+    libgl1-mesa-dri 2>&1; then
+    log "ERROR: apt-get install failed"
+  fi
+fi
+
+start_listener || log "ERROR: port 3000 is still not bound after setup"
 
 cat > /usr/local/bin/mint-desktop.sh << 'EOF'
 #!/bin/bash
-set -eu
+# Backup listener. The entrypoint already binds port 3000. If that socket is
+# open, stay running so systemd does not start a second bind.
+set +e
 user='@MINT_USER@'
-mkdir -p /var/log
-# Local noVNC backend only. A failure here must not stop port 3000.
-websockify --web /usr/share/novnc --heartbeat 30 127.0.0.1:6080 127.0.0.1:5901 >>/var/log/mint-websockify.log 2>&1 &
-echo "starting Mint login on port 3000 for ${user}"
+if bash -c 'echo >/dev/tcp/127.0.0.1/3000' 2>/dev/null; then
+  printf '%s\n' "Mint login already listening on http://0.0.0.0:3000"
+  while true; do
+    sleep 3600
+  done
+fi
+printf '%s\n' "starting Mint login on port 3000 for ${user}"
 exec python3 -u /usr/local/bin/mint-login.py "$user"
 EOF
-sed -i "s/@MINT_USER@/${user}/" /usr/local/bin/mint-desktop.sh
-chmod 755 /usr/local/bin/mint-desktop.sh
+sed -i "s/@MINT_USER@/${user}/" /usr/local/bin/mint-desktop.sh \
+  || log "ERROR: could not set the account in mint-desktop.sh"
+chmod 755 /usr/local/bin/mint-desktop.sh || log "ERROR: chmod failed for mint-desktop.sh"
 
+mkdir -p /etc/systemd/system /etc/systemd/journald.conf.d /etc/systemd/system/multi-user.target.wants \
+  || log "ERROR: could not create systemd directories"
 cat > /etc/systemd/system/mint-desktop.service << 'EOF'
 [Unit]
 Description=Mint login and Cinnamon over HTTP
-After=systemd-logind.service dbus.service
-Wants=systemd-logind.service
 
 [Service]
 Type=simple
@@ -496,17 +570,24 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
-
-mkdir -p /etc/systemd/journald.conf.d /etc/systemd/system/multi-user.target.wants
 printf '%s\n' '[Journal]' 'ForwardToConsole=yes' 'MaxLevelConsole=info' \
-  > /etc/systemd/journald.conf.d/console.conf
-ln -sfn ../mint-desktop.service /etc/systemd/system/multi-user.target.wants/mint-desktop.service
+  > /etc/systemd/journald.conf.d/console.conf \
+  || log "ERROR: could not write journald console config"
+ln -sfn ../mint-desktop.service /etc/systemd/system/multi-user.target.wants/mint-desktop.service \
+  || log "ERROR: could not enable mint-desktop.service"
 
 # xrdp stays off. The browser login page is the sign-in, then Cinnamon.
-ln -sfn /dev/null /etc/systemd/system/lightdm.service
-ln -sfn /dev/null /etc/systemd/system/xrdp.service
-ln -sfn /dev/null /etc/systemd/system/xrdp-sesman.service
+ln -sfn /dev/null /etc/systemd/system/lightdm.service || log "ERROR: could not mask lightdm"
+ln -sfn /dev/null /etc/systemd/system/xrdp.service || log "ERROR: could not mask xrdp"
+ln -sfn /dev/null /etc/systemd/system/xrdp-sesman.service || log "ERROR: could not mask xrdp-sesman"
 rm -f /etc/systemd/system/display-manager.service
-ln -sfn /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+ln -sfn /lib/systemd/system/multi-user.target /etc/systemd/system/default.target \
+  || log "ERROR: could not set the default target"
 
-exec /lib/systemd/systemd
+if [ -x /lib/systemd/systemd ]; then
+  exec /lib/systemd/systemd
+fi
+log "ERROR: /lib/systemd/systemd is missing; staying up so port 3000 remains open"
+while true; do
+  sleep 3600
+done
