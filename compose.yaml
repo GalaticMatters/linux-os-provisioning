@@ -373,54 +373,60 @@ services:
       start_period: 180s
 
   derek:
-    image: infrastlabs/docker-headless:cinna
+    image: dockerscripts/linuxmint:cinnamon
     mem_limit: 4g
     shm_size: "1gb"
+    privileged: true
+    cgroup: host
     restart: unless-stopped
-    stop_grace_period: 20s
+    stop_grace_period: 30s
     environment:
       TZ: ${TZ:-UTC}
       MINT_USER: ${DEREK_USER:-derek}
-      SSH_PASS: ${DEREK_PASSWORD:-}
-      VNC_PASS: ${DEREK_PASSWORD:-}
-      VNC_PASS_RO: ${DEREK_PASSWORD:-}
-      START_SYSTEMD: "false"
-      L: en_US
+      MINT_PASSWORD: ${DEREK_PASSWORD:-}
     entrypoint: ["/bin/bash", "/mint-entrypoint.sh"]
     volumes:
       - derek-config:/home/${DEREK_USER:-derek}
       - ./mint/entrypoint.sh:/mint-entrypoint.sh:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
     networks: [desktop]
     logging: *json-logs
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/10081'"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3389'"]
       interval: 30s
       timeout: 5s
       retries: 5
       start_period: 180s
 
   vyas:
-    image: infrastlabs/docker-headless:cinna
+    image: dockerscripts/linuxmint:cinnamon
     mem_limit: 4g
     shm_size: "1gb"
+    privileged: true
+    cgroup: host
     restart: unless-stopped
-    stop_grace_period: 20s
+    stop_grace_period: 30s
     environment:
       TZ: ${TZ:-UTC}
       MINT_USER: ${VYAS_USER:-vyas}
-      SSH_PASS: ${VYAS_PASSWORD:-}
-      VNC_PASS: ${VYAS_PASSWORD:-}
-      VNC_PASS_RO: ${VYAS_PASSWORD:-}
-      START_SYSTEMD: "false"
-      L: en_US
+      MINT_PASSWORD: ${VYAS_PASSWORD:-}
     entrypoint: ["/bin/bash", "/mint-entrypoint.sh"]
     volumes:
       - vyas-config:/home/${VYAS_USER:-vyas}
       - ./mint/entrypoint.sh:/mint-entrypoint.sh:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
     networks: [desktop]
     logging: *json-logs
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/10081'"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3389'"]
       interval: 30s
       timeout: 5s
       retries: 5

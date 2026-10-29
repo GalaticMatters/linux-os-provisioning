@@ -1,6 +1,7 @@
 #!/bin/bash
-# Compose sets MINT_USER from DEREK_USER or VYAS_USER. Create that account.
-# Do not use the shared van account. The named volume is mounted at /home/$MINT_USER.
+# dockerscripts/linuxmint:cinnamon is a real Mint Cinnamon desktop (xrdp).
+# Create this container's own account, put it in sudo, and start Cinnamon
+# directly. Do not use the shared van account or a display-manager greeter.
 set -eu
 
 user=${MINT_USER:-}
@@ -11,61 +12,64 @@ if [ -z "$user" ] || [ "$user" = "root" ] || ! printf '%s' "$user" | grep -Eq '^
   exit 1
 fi
 
+if ! command -v sudo >/dev/null 2>&1; then
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y sudo
+fi
+
 if ! id "$user" >/dev/null 2>&1; then
-  if id headless >/dev/null 2>&1 && [ "$user" != "headless" ]; then
-    usermod -l "$user" headless
-    if getent group headless >/dev/null 2>&1 && ! getent group "$user" >/dev/null 2>&1; then
-      groupmod -n "$user" headless
-    fi
-  else
+  if ! useradd --shell /bin/bash --home-dir "$home" --create-home "$user"; then
     useradd --shell /bin/bash --home-dir "$home" "$user"
   fi
 fi
 
-if ! id "$user" >/dev/null 2>&1; then
-  echo "could not create account $user" >&2
-  exit 1
-fi
-
 mkdir -p "$home"
-if [ -d /home/headless ] && [ "/home/headless" != "$home" ] && [ -z "$(ls -A "$home" 2>/dev/null || true)" ]; then
-  cp -a /home/headless/. "$home/"
+if [ -z "$(ls -A "$home" 2>/dev/null || true)" ] && [ -d /etc/skel ]; then
+  cp -a /etc/skel/. "$home/"
 fi
 usermod -d "$home" "$user"
-if getent group "$user" >/dev/null 2>&1; then
-  chown -R "$user:$user" "$home"
-else
-  chown -R "$user" "$home"
+usermod -aG sudo "$user"
+chown -R "$user:$user" "$home"
+
+# Password sudo, reset from .env on every start.
+printf '%s ALL=(ALL:ALL) ALL\n' "$user" > "/etc/sudoers.d/${user}"
+chmod 440 "/etc/sudoers.d/${user}"
+if [ -n "${MINT_PASSWORD:-}" ]; then
+  printf '%s:%s\n' "$user" "$MINT_PASSWORD" | chpasswd
 fi
 
-# Point the image entrypoint at this account. Leave the name1==headless
-# branch (it selects the real session) and the default VNC password check.
-if [ -f /entry.sh ] && ! grep -q "user1=${user}" /entry.sh; then
-  sed -i \
-    -e "s|user1=headless|user1=${user}|" \
-    -e "s|/home/headless|${home}|g" \
-    -e "s/USER=headless/USER=${user}/g" \
-    -e "s/user=headless/user=${user}/g" \
-    -e "s/chown headless:headless/chown ${user}:${user}/g" \
-    -e "s/echo \"headless:/echo \"${user}:/" \
-    /entry.sh
+# Cinnamon session for xrdp. Skip LightDM so there is no local greeter.
+printf '%s\n' 'export CINNAMON_2D=true' > /etc/X11/Xsession.d/99cinnamon2d
+chmod 644 /etc/X11/Xsession.d/99cinnamon2d
+if [ -x /usr/bin/cinnamon-session ]; then
+  update-alternatives --set x-session-manager /usr/bin/cinnamon-session || true
 fi
-
-if [ -f /etc/systemd/system/de-start.service ]; then
-  sed -i \
-    -e "s|/home/headless|${home}|g" \
-    -e "s/User=headless/User=${user}/g" \
-    /etc/systemd/system/de-start.service
+cat > /etc/xrdp/startwm.sh << 'WM'
+#!/bin/sh
+unset DBUS_SESSION_BUS_ADDRESS
+unset XDG_RUNTIME_DIR
+export CINNAMON_2D=true
+export XDG_CURRENT_DESKTOP=X-Cinnamon
+export XDG_SESSION_DESKTOP=cinnamon
+export XDG_SESSION_TYPE=x11
+if [ -r /etc/default/locale ]; then
+  . /etc/default/locale
+  export LANG LANGUAGE
 fi
+exec /usr/bin/cinnamon-session
+WM
+chmod 755 /etc/xrdp/startwm.sh
 
-if [ -n "${SSH_PASS:-}" ]; then
-  printf '%s:%s\n' "$user" "$SSH_PASS" | chpasswd
-fi
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sfn /dev/null /etc/systemd/system/lightdm.service
+rm -f /etc/systemd/system/display-manager.service
+ln -sfn /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+for unit in xrdp.service xrdp-sesman.service; do
+  for dir in /lib/systemd/system /usr/lib/systemd/system; do
+    if [ -f "$dir/$unit" ]; then
+      ln -sfn "$dir/$unit" "/etc/systemd/system/multi-user.target.wants/$unit"
+    fi
+  done
+done
 
-if [ -n "${VNC_PASS:-}" ] && command -v vncpasswd >/dev/null 2>&1; then
-  ro=${VNC_PASS_RO:-$VNC_PASS}
-  printf '%s\n%s\ny\n%s\n%s\n' "$VNC_PASS" "$VNC_PASS" "$ro" "$ro" | vncpasswd /etc/xrdp/vnc_pass || true
-  chmod 644 /etc/xrdp/vnc_pass 2>/dev/null || true
-fi
-
-exec /entry.sh
+exec /lib/systemd/systemd

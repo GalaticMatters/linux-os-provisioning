@@ -148,33 +148,35 @@ def fleet_names(prefix: str, count: int) -> list[str]:
 def render_mint(name: str) -> list[str]:
     """Persistent Linux Mint Cinnamon desktop. No fleet.reset label.
 
-    Each desktop has its own account. derek uses DEREK_USER / DEREK_PASSWORD.
-    vyas uses VYAS_USER / VYAS_PASSWORD. They do not use DESKTOP_USER.
+    derek uses DEREK_USER / DEREK_PASSWORD. vyas uses VYAS_USER / VYAS_PASSWORD.
     """
     key = name.upper()
     return [
         f"  {name}:",
-        "    image: infrastlabs/docker-headless:cinna",
+        "    image: dockerscripts/linuxmint:cinnamon",
         "    mem_limit: 4g",
         '    shm_size: "1gb"',
+        "    privileged: true",
+        "    cgroup: host",
         "    restart: unless-stopped",
-        "    stop_grace_period: 20s",
+        "    stop_grace_period: 30s",
         "    environment:",
         "      TZ: ${TZ:-UTC}",
         f"      MINT_USER: ${{{key}_USER:-{name}}}",
-        f"      SSH_PASS: ${{{key}_PASSWORD:-}}",
-        f"      VNC_PASS: ${{{key}_PASSWORD:-}}",
-        f"      VNC_PASS_RO: ${{{key}_PASSWORD:-}}",
-        '      START_SYSTEMD: "false"',
-        "      L: en_US",
+        f"      MINT_PASSWORD: ${{{key}_PASSWORD:-}}",
         '    entrypoint: ["/bin/bash", "/mint-entrypoint.sh"]',
         "    volumes:",
         f"      - {name}-config:/home/${{{key}_USER:-{name}}}",
         "      - ./mint/entrypoint.sh:/mint-entrypoint.sh:ro",
+        "      - /sys/fs/cgroup:/sys/fs/cgroup:rw",
+        "    tmpfs:",
+        "      - /run",
+        "      - /run/lock",
+        "      - /tmp",
         "    networks: [desktop]",
         "    logging: *json-logs",
         "    healthcheck:",
-        '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/10081\'"]',
+        '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3389\'"]',
         "      interval: 30s",
         "      timeout: 5s",
         "      retries: 5",
@@ -592,9 +594,10 @@ def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_cou
         f"The account on kali111 and ubuntu111 is van. "
         f"ubuntu100 keeps its files on a 500 GB disk. Open them at "
         f"https://kali111.{domain}/, https://ubuntu100.{domain}/, and https://ubuntu111.{domain}/. "
-        "derek and vyas are persistent Linux Mint Cinnamon desktops. "
-        "They are not on this page. Open them at https://derek.research101.stream/ "
-        "and https://vyas.research101.stream/. derek signs in as DEREK_USER (default derek). vyas signs in as VYAS_USER (default vyas).",
+        "derek and vyas are persistent Linux Mint Cinnamon desktops with Firefox. "
+        "They are not on this page. Open them over RDP at derek.research101.stream "
+        "and vyas.research101.stream. derek signs in as DEREK_USER (default derek). "
+        "vyas signs in as VYAS_USER (default vyas). sudo uses that password.",
     )
     return html
 
