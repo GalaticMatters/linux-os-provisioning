@@ -15,6 +15,8 @@ log() {
   printf '%s\n' "$*"
 }
 
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
+
 user=${MINT_USER:-}
 home="/home/${user}"
 
@@ -87,6 +89,9 @@ cat > /usr/local/bin/mint-start-session.sh << 'EOF'
 #!/bin/bash
 # Start Cinnamon after a successful login. Safe to call again.
 set -eu
+# runuser is /usr/sbin/runuser from util-linux. Without sbin on PATH it
+# looks missing even when the package is installed.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 user=${1:-}
 home="/home/${user}"
 if [ -z "$user" ] || ! printf '%s' "$user" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$'; then
@@ -97,10 +102,68 @@ if [ ! -x /usr/bin/cinnamon-session ]; then
   echo "cinnamon-session is not installed" >&2
   exit 1
 fi
-if ! command -v Xtigervnc >/dev/null 2>&1 || ! command -v runuser >/dev/null 2>&1; then
+bins_ready() {
+  hash -r
+  local xv ru
+  xv=$(command -v Xtigervnc 2>/dev/null || true)
+  ru=$(command -v runuser 2>/dev/null || true)
+  [ -n "$xv" ] && [ -x "$xv" ] && [ -n "$ru" ] && [ -x "$ru" ]
+}
+
+apt_locked() {
+  local f
+  command -v flock >/dev/null 2>&1 || return 1
+  for f in /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock; do
+    if [ -e "$f" ] && ! flock -n "$f" true 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# The entrypoint apt can still be installing noVNC. Wait for that lock, and
+# if Xtigervnc or runuser is still absent, install them here. This script is
+# a child of the login server, so port 3000 stays open while apt runs.
+ensure_desktop_bins() {
+  if bins_ready; then
+    return 0
+  fi
+  echo "Installing tigervnc-standalone-server and util-linux before the desktop session" >&2
+  local i tries
+  tries=0
+  for i in $(seq 1 900); do
+    if bins_ready; then
+      echo "Xtigervnc and runuser are ready" >&2
+      return 0
+    fi
+    if apt_locked; then
+      if [ "$i" = 1 ] || [ $((i % 15)) -eq 0 ]; then
+        echo "Waiting for the package install already in progress" >&2
+      fi
+      sleep 1
+      continue
+    fi
+    tries=$((tries + 1))
+    if [ "$tries" -gt 3 ]; then
+      break
+    fi
+    echo "Running apt-get install tigervnc-standalone-server util-linux" >&2
+    apt-get update -o DPkg::Lock::Timeout=600 || echo "ERROR: apt-get update failed" >&2
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      -o DPkg::Lock::Timeout=600 \
+      tigervnc-standalone-server util-linux \
+      || echo "ERROR: apt-get install failed" >&2
+    if bins_ready; then
+      echo "Xtigervnc and runuser are ready" >&2
+      return 0
+    fi
+    sleep 2
+  done
   echo "Xtigervnc or runuser is not installed" >&2
-  exit 1
-fi
+  return 1
+}
+
+ensure_desktop_bins || exit 1
 
 mkdir -p /tmp/.X11-unix "/run/user"
 chmod 1777 /tmp/.X11-unix || true
@@ -326,7 +389,7 @@ def start_desktop() -> None:
     result = subprocess.run(
         ["/usr/local/bin/mint-start-session.sh", ACCOUNT or ""],
         check=False,
-        timeout=90,
+        timeout=1200,
         capture_output=True,
         text=True,
     )
@@ -511,30 +574,44 @@ fi
 
 need_pkgs=0
 command -v sudo >/dev/null 2>&1 || need_pkgs=1
-command -v Xtigervnc >/dev/null 2>&1 || need_pkgs=1
+xv=$(command -v Xtigervnc 2>/dev/null || true)
+[ -n "$xv" ] && [ -x "$xv" ] || need_pkgs=1
+ru=$(command -v runuser 2>/dev/null || true)
+[ -n "$ru" ] && [ -x "$ru" ] || need_pkgs=1
 command -v websockify >/dev/null 2>&1 || need_pkgs=1
 command -v dbus-launch >/dev/null 2>&1 || need_pkgs=1
 command -v python3 >/dev/null 2>&1 || need_pkgs=1
 [ -f /usr/share/novnc/vnc.html ] || need_pkgs=1
 if [ "$need_pkgs" = 1 ]; then
-  log "Installing desktop packages. Port 3000 stays open if it is already bound."
-  if ! apt-get update 2>&1; then
-    log "ERROR: apt-get update failed"
-  fi
-  if ! DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    sudo \
-    python3 \
-    tigervnc-standalone-server \
-    novnc \
-    websockify \
-    dbus-x11 \
-    xfonts-base \
-    libgl1-mesa-dri 2>&1; then
-    log "ERROR: apt-get install failed"
-  fi
+  log "Installing desktop packages in the background. Port 3000 stays open."
+  (
+    if ! apt-get update -o DPkg::Lock::Timeout=600 2>&1; then
+      log "ERROR: apt-get update failed"
+    fi
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      -o DPkg::Lock::Timeout=600 \
+      sudo \
+      python3 \
+      tigervnc-standalone-server \
+      util-linux \
+      novnc \
+      websockify \
+      dbus-x11 \
+      xfonts-base \
+      libgl1-mesa-dri 2>&1; then
+      log "ERROR: apt-get install failed"
+    fi
+    hash -r
+    xv=$(command -v Xtigervnc 2>/dev/null || true)
+    ru=$(command -v runuser 2>/dev/null || true)
+    if [ -n "$xv" ] && [ -x "$xv" ] && [ -n "$ru" ] && [ -x "$ru" ]; then
+      log "Xtigervnc and runuser are installed"
+    else
+      log "ERROR: Xtigervnc or runuser is still missing after apt"
+    fi
+    start_listener || log "ERROR: port 3000 is still not bound after apt"
+  ) &
 fi
-
-start_listener || log "ERROR: port 3000 is still not bound after setup"
 
 cat > /usr/local/bin/mint-desktop.sh << 'EOF'
 #!/bin/bash
