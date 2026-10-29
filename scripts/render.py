@@ -597,8 +597,8 @@ def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_cou
         f"https://kali111.{domain}/, https://ubuntu100.{domain}/, and https://ubuntu111.{domain}/. "
         "derek and vyas are persistent Linux Mint Cinnamon desktops with Firefox. "
         "They are not on this page. Open them in a browser at derek.research101.stream "
-        "and vyas.research101.stream. The session is already signed in as DEREK_USER "
-        "(default derek) or VYAS_USER (default vyas). sudo uses that password.",
+        "and vyas.research101.stream. Sign in as DEREK_USER "
+        "(default derek) or VYAS_USER (default vyas). Cinnamon starts after that password. sudo uses it too.",
     )
     return html
 

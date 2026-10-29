@@ -1,8 +1,8 @@
 #!/bin/bash
-# dockerscripts/linuxmint:cinnamon is a real Mint Cinnamon desktop, but the
-# published image only exposes xrdp. A browser cannot render RDP. This
-# entrypoint creates the account, grants password sudo, starts Cinnamon on
-# a local VNC display, and serves that display over HTTP on port 3000.
+# dockerscripts/linuxmint:cinnamon is a real Mint Cinnamon desktop. The
+# published image has no HTTP port, so this entrypoint serves noVNC on 3000.
+# The browser shows a login page first. Cinnamon starts only after the
+# account password is accepted. xrdp stays masked.
 set -eu
 
 user=${MINT_USER:-}
@@ -17,10 +17,12 @@ if ! command -v sudo >/dev/null 2>&1 \
   || ! command -v Xtigervnc >/dev/null 2>&1 \
   || ! command -v websockify >/dev/null 2>&1 \
   || ! command -v dbus-launch >/dev/null 2>&1 \
+  || ! command -v python3 >/dev/null 2>&1 \
   || [ ! -f /usr/share/novnc/vnc.html ]; then
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     sudo \
+    python3 \
     tigervnc-standalone-server \
     novnc \
     websockify \
@@ -43,28 +45,12 @@ usermod -d "$home" "$user"
 usermod -aG sudo "$user"
 chown -R "$user:$user" "$home"
 
-# Password sudo, reset from .env on every start.
+# Password sudo, reset from .env on every start. The login page checks this hash.
 printf '%s ALL=(ALL:ALL) ALL\n' "$user" > "/etc/sudoers.d/${user}"
 chmod 440 "/etc/sudoers.d/${user}"
 if [ -n "${MINT_PASSWORD:-}" ]; then
   printf '%s:%s\n' "$user" "$MINT_PASSWORD" | chpasswd
 fi
-
-# Browser opens this page and is sent straight into the desktop.
-cat > /usr/share/novnc/index.html << 'HTML'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Linux Mint</title>
-<meta http-equiv="refresh" content="0; url=vnc.html?autoconnect=1&amp;resize=scale&amp;reconnect=1">
-<script>location.replace("vnc.html?autoconnect=1&resize=scale&reconnect=1");</script>
-</head>
-<body>
-<p><a href="vnc.html?autoconnect=1&amp;resize=scale&amp;reconnect=1">Open the Linux Mint desktop</a></p>
-</body>
-</html>
-HTML
 
 cat > /usr/local/bin/mint-xstartup << 'EOF'
 #!/bin/sh
@@ -85,27 +71,52 @@ exec dbus-launch --exit-with-session /usr/bin/cinnamon-session
 EOF
 chmod 755 /usr/local/bin/mint-xstartup
 
-# Username is substituted below. systemd does not pass the container environment.
-cat > /usr/local/bin/mint-desktop.sh << 'EOF'
+cat > /usr/local/bin/mint-start-session.sh << 'EOF'
 #!/bin/bash
+# Start Cinnamon for the signed-in account. Safe to call more than once.
 set -eu
-user='@MINT_USER@'
+user=${1:-}
 home="/home/${user}"
-uid=$(id -u "$user")
-runtime="/run/user/${uid}"
-mkdir -p "$runtime" /tmp/.X11-unix
-chown "$user:$user" "$runtime"
-chmod 700 "$runtime"
-chmod 1777 /tmp/.X11-unix
-rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
-touch "$home/.Xauthority"
-chown "$user:$user" "$home/.Xauthority"
-chmod 600 "$home/.Xauthority"
-
+if [ -z "$user" ] || ! printf '%s' "$user" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$'; then
+  echo "mint-start-session: bad account" >&2
+  exit 1
+fi
 if [ ! -x /usr/bin/cinnamon-session ]; then
   echo "cinnamon-session is not installed" >&2
   exit 1
 fi
+
+mkdir -p /run /tmp/.X11-unix /var/log
+chmod 1777 /tmp/.X11-unix
+exec 9>/run/mint-session.lock
+flock 9
+
+session_up() {
+  [ -S /tmp/.X11-unix/X1 ] || return 1
+  [ -f /run/mint-session.pid ] || return 1
+  kill -0 "$(cat /run/mint-session.pid)" 2>/dev/null
+}
+
+if session_up; then
+  exit 0
+fi
+
+if [ -f /run/mint-vnc.pid ]; then
+  kill "$(cat /run/mint-vnc.pid)" 2>/dev/null || true
+fi
+if [ -f /run/mint-session.pid ]; then
+  kill "$(cat /run/mint-session.pid)" 2>/dev/null || true
+fi
+rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
+
+uid=$(id -u "$user")
+runtime="/run/user/${uid}"
+mkdir -p "$runtime"
+chown "$user:$user" "$runtime"
+chmod 700 "$runtime"
+touch "$home/.Xauthority"
+chown "$user:$user" "$home/.Xauthority"
+chmod 600 "$home/.Xauthority"
 
 runuser -u "$user" -- /usr/bin/Xtigervnc :1 \
   -auth "$home/.Xauthority" \
@@ -116,8 +127,8 @@ runuser -u "$user" -- /usr/bin/Xtigervnc :1 \
   -SecurityTypes None \
   -AlwaysShared \
   -DisconnectClients=0 \
-  -desktop "Linux Mint" &
-vnc_pid=$!
+  -desktop "Linux Mint" >>/var/log/mint-desktop.log 2>&1 &
+echo $! > /run/mint-vnc.pid
 
 ready=0
 for _ in $(seq 1 100); do
@@ -129,7 +140,6 @@ for _ in $(seq 1 100); do
 done
 if [ "$ready" != 1 ]; then
   echo "Xtigervnc did not open a display" >&2
-  kill "$vnc_pid" 2>/dev/null || true
   exit 1
 fi
 
@@ -140,23 +150,282 @@ runuser -u "$user" -- env \
   DISPLAY=:1 \
   XAUTHORITY="$home/.Xauthority" \
   XDG_RUNTIME_DIR="$runtime" \
-  /usr/local/bin/mint-xstartup &
-sess_pid=$!
+  /usr/local/bin/mint-xstartup >>/var/log/mint-desktop.log 2>&1 &
+echo $! > /run/mint-session.pid
+echo "Cinnamon started for ${user}"
+EOF
+chmod 755 /usr/local/bin/mint-start-session.sh
 
-websockify --web /usr/share/novnc --heartbeat 30 3000 127.0.0.1:5901 &
+cat > /usr/local/bin/mint-login.py << 'EOF'
+#!/usr/bin/env python3
+"""Login page on port 3000. Cinnamon starts only after the account password matches."""
+
+import hmac
+import os
+import re
+import secrets
+import socket
+import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs
+
+import ctypes
+import ctypes.util
+
+USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+ACCOUNT = sys_account = None  # set from argv in main
+SECRET = secrets.token_bytes(32)
+COOKIE = "mint_session"
+NOVNC = "/vnc.html?autoconnect=1&resize=scale&reconnect=1"
+LIBCRYPT = ctypes.CDLL(ctypes.util.find_library("crypt"))
+LIBCRYPT.crypt.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+LIBCRYPT.crypt.restype = ctypes.c_char_p
+
+
+def shadow_hash(password: str, salt: str) -> str:
+    hashed = LIBCRYPT.crypt(password.encode(), salt.encode())
+    if not hashed:
+        return ""
+    return hashed.decode()
+
+
+def account_ok(username: str, password: str) -> bool:
+    if ACCOUNT is None or username != ACCOUNT or not password:
+        return False
+    try:
+        with open("/etc/shadow", encoding="utf-8") as handle:
+            row = next(line for line in handle if line.startswith(ACCOUNT + ":"))
+    except (OSError, StopIteration):
+        return False
+    hashed = row.split(":", 2)[1]
+    if not hashed or hashed[0] in "!*" :
+        return False
+    return hmac.compare_digest(shadow_hash(password, hashed), hashed)
+
+
+def session_cookie() -> str:
+    return hmac.new(SECRET, b"mint-ok", "sha256").hexdigest()
+
+
+def authed(header: str | None) -> bool:
+    if not header:
+        return False
+    token = ""
+    for part in header.split(";"):
+        name, _, value = part.strip().partition("=")
+        if name == COOKIE:
+            token = value
+            break
+    if not token:
+        return False
+    return hmac.compare_digest(token, session_cookie())
+
+
+def page(error: str, username: str) -> bytes:
+    def esc(value: str) -> str:
+        return (
+            value.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
+
+    message = f'<p class="err">{esc(error)}</p>' if error else ""
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in to Linux Mint</title>
+<style>
+  body {{ margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: #1a3a2a; color: #f4f1ea; font-family: "Segoe UI", sans-serif; }}
+  form {{ width: min(22rem, calc(100% - 2rem)); background: #24382c; padding: 1.5rem;
+    border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }}
+  h1 {{ font-size: 1.25rem; margin: 0 0 .25rem; }}
+  p {{ margin: 0 0 1rem; color: #d5e0d8; }}
+  label {{ display: block; font-size: .85rem; margin: .75rem 0 .25rem; }}
+  input {{ width: 100%; box-sizing: border-box; padding: .6rem .7rem; border-radius: 8px;
+    border: 1px solid #3d5c49; background: #12241b; color: inherit; }}
+  button {{ margin-top: 1rem; width: 100%; padding: .7rem; border: 0; border-radius: 8px;
+    background: #8db87a; color: #142016; font-weight: 700; cursor: pointer; }}
+  .err {{ color: #ffb4a8; }}
+</style>
+</head>
+<body>
+<form method="post" action="/login">
+  <h1>Linux Mint</h1>
+  <p>Sign in to this desktop. Cinnamon starts after the password is accepted.</p>
+  {message}
+  <label for="username">Username</label>
+  <input id="username" name="username" autocomplete="username" autocapitalize="none" required value="{esc(username)}">
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required>
+  <button type="submit">Sign in</button>
+</form>
+</body>
+</html>
+"""
+    return html.encode()
+
+
+def start_desktop() -> None:
+    subprocess.run(["/usr/local/bin/mint-start-session.sh", ACCOUNT], check=True, timeout=30)
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt: str, *args) -> None:
+        if self.path.startswith("/login"):
+            print("login request", flush=True)
+            return
+        super().log_message(fmt, *args)
+
+    def do_POST(self) -> None:
+        if self.path.split("?", 1)[0] != "/login":
+            self.send_error(404)
+            return
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0 or length > 4096:
+            self._form("Sign-in failed.", "")
+            return
+        fields = parse_qs(self.rfile.read(length).decode("utf-8", "replace"), keep_blank_values=True)
+        username = fields.get("username", [""])[0]
+        password = fields.get("password", [""])[0]
+        if not account_ok(username, password):
+            self._form("That username or password is wrong.", username if USER_RE.fullmatch(username) else "")
+            return
+        try:
+            start_desktop()
+        except (OSError, subprocess.SubprocessError):
+            self._form("The desktop did not start. See docker compose logs.", username)
+            return
+        body = b""
+        self.send_response(303)
+        self.send_header("Location", NOVNC)
+        self.send_header("Set-Cookie", f"{COOKIE}={session_cookie()}; HttpOnly; SameSite=Lax; Path=/")
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        del body
+
+    def do_GET(self) -> None:
+        path = self.path.split("?", 1)[0]
+        signed_in = authed(self.headers.get("Cookie"))
+        if path in ("/", "/login") and not signed_in:
+            self._form("", "")
+            return
+        if path in ("/", "/login") and signed_in:
+            self.send_response(303)
+            self.send_header("Location", NOVNC)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if not signed_in:
+            self.send_response(303)
+            self.send_header("Location", "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        try:
+            start_desktop()
+        except (OSError, subprocess.SubprocessError):
+            self._form("The desktop did not start. See docker compose logs.", ACCOUNT or "")
+            return
+        self._proxy()
+
+    def _form(self, error: str, username: str) -> None:
+        body = page(error, username)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _proxy(self) -> None:
+        try:
+            backend = socket.create_connection(("127.0.0.1", 6080), timeout=10)
+        except OSError:
+            self.send_error(502, "desktop proxy is not ready")
+            return
+        request = f"{self.command} {self.path} HTTP/1.1\r\n"
+        for key, value in self.headers.items():
+            if key.lower() == "host":
+                value = "127.0.0.1:6080"
+            request += f"{key}: {value}\r\n"
+        request += "\r\n"
+        try:
+            backend.sendall(request.encode())
+            self._splice(backend)
+        except OSError:
+            pass
+        finally:
+            backend.close()
+        self.close_connection = True
+
+    def _splice(self, backend: socket.socket) -> None:
+        client = self.connection
+        def pump(src: socket.socket, dst: socket.socket) -> None:
+            try:
+                while True:
+                    data = src.recv(65536)
+                    if not data:
+                        break
+                    dst.sendall(data)
+            except OSError:
+                pass
+            try:
+                dst.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+
+        left = threading.Thread(target=pump, args=(client, backend), daemon=True)
+        right = threading.Thread(target=pump, args=(backend, client), daemon=True)
+        left.start()
+        right.start()
+        left.join()
+        right.join()
+
+
+def main() -> None:
+    global ACCOUNT
+    import sys
+    if len(sys.argv) != 2 or not USER_RE.fullmatch(sys.argv[1]):
+        raise SystemExit("usage: mint-login.py ACCOUNT")
+    ACCOUNT = sys.argv[1]
+    server = ThreadingHTTPServer(("0.0.0.0", 3000), Handler)
+    print(f"Mint login on http://0.0.0.0:3000 for {ACCOUNT}", flush=True)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
+EOF
+chmod 755 /usr/local/bin/mint-login.py
+
+cat > /usr/local/bin/mint-desktop.sh << 'EOF'
+#!/bin/bash
+set -eu
+user='@MINT_USER@'
+websockify --web /usr/share/novnc --heartbeat 30 127.0.0.1:6080 127.0.0.1:5901 &
 ws_pid=$!
-
-echo "Mint desktop HTTP on port 3000 for $user"
-wait -n "$vnc_pid" "$sess_pid" "$ws_pid"
-kill "$vnc_pid" "$sess_pid" "$ws_pid" 2>/dev/null || true
-exit 1
+sleep 0.3
+if ! kill -0 "$ws_pid" 2>/dev/null; then
+  echo "websockify failed to start" >&2
+  exit 1
+fi
+echo "Mint login HTTP on port 3000 for ${user}"
+exec python3 /usr/local/bin/mint-login.py "$user"
 EOF
 sed -i "s/@MINT_USER@/${user}/" /usr/local/bin/mint-desktop.sh
 chmod 755 /usr/local/bin/mint-desktop.sh
 
 cat > /etc/systemd/system/mint-desktop.service << 'EOF'
 [Unit]
-Description=Cinnamon desktop over HTTP
+Description=Mint login and Cinnamon over HTTP
 After=systemd-logind.service dbus.service
 Wants=systemd-logind.service
 
@@ -175,7 +444,7 @@ printf '%s\n' '[Journal]' 'ForwardToConsole=yes' 'MaxLevelConsole=info' \
   > /etc/systemd/journald.conf.d/console.conf
 ln -sfn ../mint-desktop.service /etc/systemd/system/multi-user.target.wants/mint-desktop.service
 
-# No greeter and no RDP listener. The browser session is the desktop.
+# xrdp stays off. The browser login page is the sign-in, then Cinnamon.
 ln -sfn /dev/null /etc/systemd/system/lightdm.service
 ln -sfn /dev/null /etc/systemd/system/xrdp.service
 ln -sfn /dev/null /etc/systemd/system/xrdp-sesman.service

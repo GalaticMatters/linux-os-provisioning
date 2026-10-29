@@ -36,8 +36,8 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `https://cybersecurity.lan` | `10.0.253.1` (`SERVER_IP`) | List of Kali desktops, and the SSH names |
 | `https://kali01.cybersecurity.lan` … `kali30.cybersecurity.lan` | `10.0.253.1` (`SERVER_IP`) | Kali KDE in the browser. Two-digit names. Behind Caddy on the server, not on macvlan. |
 | `ssh student@ubuntu01.cybersecurity.lan` … `ubuntu30` | `10.0.253.11` … `10.0.253.40` | Ubuntu Server, one macvlan address each, SSH port 22 only |
-| `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000` | Persistent Linux Mint Cinnamon, Firefox, sudo. Not wiped at 02:00. |
-| `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000` | Persistent Linux Mint Cinnamon, Firefox, sudo. Not wiped at 02:00. |
+| `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
+| `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 
 Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. They stay behind Caddy on the server. Do not put Kali on macvlan. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
 
@@ -81,9 +81,9 @@ Every Kali service uses the same image, so pulling one updates the image for the
 
 `derek` and `vyas` are persistent Linux Mint Cinnamon desktops. They sit on the Compose network `desktop` (`cybersecurity-desktop`), so the existing `cloudflared` container can reach them by service name. They are not on macvlan and they do not take a LAN address.
 
-`lscr.io/linuxserver/webtop` has no Mint tag. Checked again on 29 October 2026: Docker Hub tag queries for `mint`, `cinnamon`, `linuxmint`, and `lmde` each returned zero tags. `linuxserver/rdesktop` has no Mint tag either. These two desktops use the published image `dockerscripts/linuxmint:cinnamon` (linux/amd64 manifest `sha256:02f4a0cb1561907d22865e2ed075c9c198443557d5884d316d3bfe0d3c268825`). The image build installs `mint-meta-cinnamon` and `firefox` (also Epiphany, Falkon, and Konqueror). That image does not serve HTTP. [`mint/entrypoint.sh`](mint/entrypoint.sh) installs noVNC and TigerVNC on first start, starts `cinnamon-session` on a local VNC display, and serves it at HTTP port **3000**. LightDM and xrdp are masked, so there is no greeter and the browser does not need RDP. The entrypoint puts the account in the `sudo` group. `sudo` asks for that account's password.
+`lscr.io/linuxserver/webtop` has no Mint tag. Checked again on 29 October 2026: Docker Hub tag queries for `mint`, `cinnamon`, `linuxmint`, and `lmde` each returned zero tags. `linuxserver/rdesktop` has no Mint tag either. These two desktops use the published image `dockerscripts/linuxmint:cinnamon` (linux/amd64 manifest `sha256:02f4a0cb1561907d22865e2ed075c9c198443557d5884d316d3bfe0d3c268825`). The image build installs `mint-meta-cinnamon` and `firefox` (also Epiphany, Falkon, and Konqueror). That image does not serve HTTP. [`mint/entrypoint.sh`](mint/entrypoint.sh) installs noVNC and TigerVNC on first start and serves a login page at HTTP port **3000**. The username is `DEREK_USER` or `VYAS_USER`. The password is `DEREK_PASSWORD` or `VYAS_PASSWORD`. Cinnamon starts after that password is accepted. xrdp stays masked, so the browser does not use RDP. The entrypoint puts the account in the `sudo` group. `sudo` asks for the same password.
 
-derek and vyas do not share `DESKTOP_USER` or `DESKTOP_PASSWORD`. The browser session is already signed in as `DEREK_USER` (default `derek`) or `VYAS_USER` (default `vyas`). `DEREK_PASSWORD` and `VYAS_PASSWORD` have no default. The entrypoint writes that password again on every start. It is the `sudo` password. Homes are the named volumes `cybersecurity-derek-config` and `cybersecurity-vyas-config`, mounted at `/home/$DEREK_USER` and `/home/$VYAS_USER`. Neither service has `fleet.reset: "true"`, so the 02:00 job does not recreate them.
+derek and vyas do not share `DESKTOP_USER` or `DESKTOP_PASSWORD`. The login page asks for `DEREK_USER` (default `derek`) and `DEREK_PASSWORD`, or `VYAS_USER` (default `vyas`) and `VYAS_PASSWORD`. Neither password has a default. The entrypoint writes that password again on every start. An empty password cannot sign in. Homes are the named volumes `cybersecurity-derek-config` and `cybersecurity-vyas-config`, mounted at `/home/$DEREK_USER` and `/home/$VYAS_USER`. Neither service has `fleet.reset: "true"`, so the 02:00 job does not recreate them.
 
 Do not add a second tunnel token. `cloudflared` (profile `public`) is the tunnel already in this Compose file. In the Cloudflare Zero Trust dashboard, on that same tunnel, replace the RDP routes. A browser cannot render RDP, and HTTP pointed at `rdp://` is a blank page. The service type is **HTTP**:
 
@@ -92,7 +92,7 @@ Do not add a second tunnel token. `cloudflared` (profile `public`) is the tunnel
 | `derek.research101.stream` | `http://derek:3000` |
 | `vyas.research101.stream` | `http://vyas:3000` |
 
-`/` redirects into the Cinnamon desktop. Firefox is in the menu. `sudo` in a terminal asks for `DEREK_PASSWORD` or `VYAS_PASSWORD`.
+`/` is the login page. After sign-in, Firefox is in the Cinnamon menu. `sudo` in a terminal asks for the same password.
 
 On the ProLiant, from this repo:
 
@@ -276,7 +276,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | --- | --- |
 | `compose.yaml` | Generated. 30 Kali, 30 Ubuntu, persistent desktops, Caddy, dnsmasq, scheduler, cloudflared. `mem_limit: 4g` on every service. |
 | `scripts/render.py` | Rebuilds the fleet files from `.env`, including derek and vyas |
-| `mint/entrypoint.sh` | Creates the derek or vyas account, grants sudo, serves Cinnamon over HTTP on port 3000 |
+| `mint/entrypoint.sh` | Creates the derek or vyas account, grants sudo, requires that password on HTTP port 3000, then starts Cinnamon |
 | `.env.example` | Domain, timezone, NIC, subnet, counts, SSH placeholders |
 | `caddy/Caddyfile` | Generated. Internal CA and one site per Kali desktop |
 | `caddy/site/index.html` | Generated page on the apex name |
@@ -308,4 +308,4 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **Page loads, black screen.** The browser is not on HTTPS, or something is stripping WebSocket upgrades. Caddy forwards them.
 - **Reset did not run.** `docker compose logs scheduler` should show the timezone at start and a `reset:` line after 02:00. `docker compose exec scheduler date` should match `TZ`.
 - **derek or vyas is a blank page.** The public hostname must be service type HTTP, origin `http://derek:3000` or `http://vyas:3000`. RDP on 3389 does not render in a browser. Replace the RDP route. The first start installs noVNC before port 3000 answers. `docker compose logs derek`.
-- **sudo asks for a password and rejects it.** `DEREK_PASSWORD` or `VYAS_PASSWORD` is empty, or the container was not recreated after the password changed. The entrypoint resets the password from `.env` on start. The browser session is already signed in; that password is for `sudo`.
+- **The Mint login is rejected.** `DEREK_PASSWORD` or `VYAS_PASSWORD` is empty, or the container was not recreated after the password changed. The entrypoint resets the password from `.env` on start. The same password is used for `sudo` after Cinnamon starts.
