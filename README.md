@@ -1,6 +1,6 @@
 # Cybersecurity LAN
 
-Thirty Kali desktops in the browser, and thirty Ubuntu servers you reach with SSH. Names sit under `cybersecurity.lan` (`BASE_DOMAIN`). [Caddy](https://caddyserver.com/) terminates HTTPS for the Kali names. Ubuntu is not a desktop and not a Webtop: each one is an Ubuntu Server container with its own LAN address and `sshd` on port 22.
+Thirty Kali desktops in the browser, and thirty Ubuntu servers you reach with SSH. Names sit under `cybersecurity.lan` (`BASE_DOMAIN`). [Caddy](https://caddyserver.com/) terminates HTTPS for the Kali names. Ubuntu is not a desktop and not a Webtop. ubuntu01–ubuntu30 and ubuntuserver are Ubuntu Server containers on their macvlan addresses, with `sshd` on port 22. The shared image also has `apt`, `ping`, `ip`, `curl`, and `sudo`.
 
 Anyone who can open a Kali URL gets a desktop, and that desktop’s terminal has passwordless sudo inside the container. Keep this on a trusted LAN. Do not publish it on the internet.
 
@@ -35,7 +35,8 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | --- | --- | --- |
 | `https://cybersecurity.lan` | `10.0.253.1` (`SERVER_IP`) | List of Kali desktops, and the SSH names |
 | `https://kali01.cybersecurity.lan` … `kali30.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.55` … `10.0.253.84` | Kali KDE in the browser. Also on the `desktop` bridge so Caddy can reach `kaliNN:3001`. Ping and SSH to Ubuntu from the desktop. |
-| `ssh student@ubuntu01.cybersecurity.lan` … `ubuntu30` | `10.0.253.11` … `10.0.253.40` | Ubuntu Server, one macvlan address each, SSH port 22 only |
+| `ssh student@ubuntu01.cybersecurity.lan` … `ubuntu30` | `10.0.253.11` … `10.0.253.40` | Ubuntu Server, one macvlan address each, SSH port 22. `apt`, `ping`, and `ip` are installed. |
+| `ssh van@ubuntuserver.cybersecurity.lan` | `10.0.253.41` | Same image as ubuntu01–ubuntu30. Not part of `lab.sh on`/`off`, and not recreated at 02:00. |
 | `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000`, macvlan `10.0.253.53` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000`, macvlan `10.0.253.54` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | kali111 | macvlan `10.0.253.50`, still `kali111` on the `desktop` bridge | Persistent Kali. Ping and SSH to the Ubuntu fleet from this desktop. |
@@ -140,9 +141,30 @@ Port 22 on that container’s LAN address. Nothing is published on the Docker ho
 - Set `SSH_PASSWORD` if you want password login. `PasswordAuthentication` is on only when a password is set.
 - Leave both empty in `.env.example`. Do not commit `.env`.
 - A `$` in `SSH_PASSWORD` must be written `$$`. Compose treats `$` as interpolation.
-- Root login and empty passwords are off. The account is not given sudo.
+- Root login and empty passwords are off. The `sudo` package is installed. The SSH account is not in the `sudo` group.
 
 Host keys are created when the container starts (`ssh-keygen -A`). They are not stored in the image. The 02:00 reset deletes them. Clients will see a changed host key and must update `known_hosts`.
+
+## Ubuntu server packages
+
+ubuntu01–ubuntu30 and ubuntuserver share one local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04`. It is an Ubuntu server: `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, and `sudo`. `apt`, `ping` (`iputils-ping`), and `ip` (`iproute2`) are on the image. There is no desktop and no Webtop.
+
+SSH is the same account as before. ubuntu01–ubuntu30 take `SSH_USER` and `SSH_PUBLIC_KEY` or `SSH_PASSWORD` from `.env`. ubuntuserver takes `DESKTOP_USER` (default `van`) and `DESKTOP_PASSWORD` on that same image. Addresses stay on the macvlan: `10.0.253.11` through `10.0.253.40`, and ubuntuserver at `10.0.253.41`.
+
+Those packages live in the image. The 02:00 reset still recreates ubuntu01–ubuntu30, because they are labeled `fleet.reset`. It still does not recreate ubuntuserver. Recreate drops the writable layer (the account, `authorized_keys`, and the host keys) and keeps the image, so `apt`, `ping`, `ip`, `curl`, and `sudo` come back. A package installed later with `apt` sits on the writable layer, so the next recreate removes it. `./scripts/lab.sh on` and `off` still only start and stop kali01–kali30 and ubuntu01–ubuntu30.
+
+On the ProLiant, after `git pull`, rebuild the image once, then recreate ubuntu01–ubuntu30 onto it:
+
+```sh
+docker compose build ubuntu01
+docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'ubuntu%02d ' "$n"; done)
+```
+
+One build updates `cybersecurity-ubuntu-ssh:1` for the whole fleet. Recreate ubuntuserver on its own when it should use that image. The 02:00 job does not:
+
+```sh
+docker compose up -d --force-recreate --no-deps ubuntuserver
+```
 
 ## Macvlan
 
@@ -242,7 +264,7 @@ docker compose up -d --build --remove-orphans
 
 ## Resources
 
-There is one Kali image on disk. RAM is per running desktop: about 1–2 GB for the session, plus a tmpfs home up to `DESKTOP_TMPFS_SIZE` (default 2 GB, only written files count) and a 1 GB shared-memory ceiling. Thirty desktops at once is tens of GB of RAM. Lower `KALI_COUNT` on a small host. The Ubuntu image is built once (`ubuntu:24.04` plus OpenSSH) and each server is only `sshd`.
+There is one Kali image on disk. RAM is per running desktop: about 1–2 GB for the session, plus a tmpfs home up to `DESKTOP_TMPFS_SIZE` (default 2 GB, only written files count) and a 1 GB shared-memory ceiling. Thirty desktops at once is tens of GB of RAM. Lower `KALI_COUNT` on a small host. The Ubuntu image is built once from `ubuntu:24.04` with OpenSSH, `apt`, `ping`, `ip`, `curl`, and `sudo`. Each server is that image. It is not a desktop.
 
 Every container Compose defines has `mem_limit: 4g`: the Kali fleet, the Ubuntu fleet, the persistent desktops (kali111, ubuntu100, ubuntu111, derek, vyas), ubuntuserver, Caddy, dnsmasq, the scheduler, and cloudflared. That is a ceiling. Docker does not reserve 4 GB for an idle container. Desktops still have `shm_size: "1gb"`: the Kali fleet, kali111, ubuntu100, ubuntu111, derek, and vyas.
 
@@ -331,7 +353,7 @@ The job runs [`scheduler/reset-desktops.sh`](scheduler/reset-desktops.sh), which
 Recreate replaces the container.
 
 - Kali home is a tmpfs on `/config`. The new container has an empty home. Packages written into the image layer rather than the home are discarded too.
-- Ubuntu has no volume. The writable layer goes away, including the account, `authorized_keys`, and the SSH host keys. The entrypoint creates the account again from `.env` and generates new host keys.
+- Ubuntu has no volume. The writable layer goes away, including the account, `authorized_keys`, and the SSH host keys. The entrypoint creates the account again from `.env` and generates new host keys. `apt`, `ping`, `ip`, `curl`, and `sudo` stay, because they are in the image.
 - derek and vyas are not labeled `fleet.reset`. The job does not recreate them, and `cybersecurity-derek-config` and `cybersecurity-vyas-config` stay.
 
 Caddy, dnsmasq, and the scheduler keep running. The scheduler is not recreated (that would kill the job). It mounts the Docker socket and runs as root, so it can control the daemon.
@@ -354,7 +376,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `.env.example` | Domain, timezone, NIC, subnet, counts, SSH placeholders |
 | `caddy/Caddyfile` | Generated. Internal CA and one site per Kali desktop |
 | `caddy/site/index.html` | Generated page on the apex name |
-| `ubuntu/` | Ubuntu Server image: OpenSSH only, host keys at start |
+| `ubuntu/` | Ubuntu Server image: OpenSSH, apt, ping, ip, curl, and sudo. Host keys at start. Not a desktop. |
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
 | `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, and ubuntu111. `dns-on` / `dns-off` start and stop only dnsmasq |
@@ -367,7 +389,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 
 `derek` and `vyas` use `dockerscripts/linuxmint:cinnamon` (Linux Mint Cinnamon, Firefox). The image has no HTTP port, so the entrypoint adds noVNC on port 3000. Registry index digest `sha256:094170fed2aaa379cd8c85f48fbf395dd7bfc2b19511b73f037cc340fe414342`. The linux/amd64 manifest is `sha256:02f4a0cb1561907d22865e2ed075c9c198443557d5884d316d3bfe0d3c268825`, pushed 26 October 2026.
 
-Ubuntu is a local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04` with `openssh-server`. It is not a browser desktop.
+Ubuntu is a local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04` with `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, and `sudo`. `apt`, `ping`, and `ip` are on the image. ubuntu01–ubuntu30 and ubuntuserver use it. It is not a browser desktop.
 
 Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, Compose plugin `v5.6.0`, supercronic `v0.2.50`, dnsmasq image `alpine:3.22`.
 
