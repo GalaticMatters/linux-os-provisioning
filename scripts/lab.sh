@@ -3,11 +3,9 @@ set -eu
 cd "$(dirname "$0")/.."
 
 # .env sets COMPOSE_PROFILES=dns. Clear it so `on` (`up -d`) does not
-# start dnsmasq. `off` resolves container IDs for every other service
-# and `docker stop`s those IDs. It does not call `docker compose stop`:
-# a long service list still stops vyas. dnsmasq, derek, vyas, kali111,
-# and ubuntu111 are never in that ID list. `extra-containers-off`
-# stops only those four desktops.
+# start dnsmasq. `off` stops only kali01–kali30 and ubuntu01–ubuntu30,
+# by container ID. It does not ask Compose for the service list.
+# `extra-containers-off` stops only derek, vyas, kali111, and ubuntu111.
 export COMPOSE_PROFILES=""
 
 profiles=""
@@ -26,31 +24,19 @@ case "${1:-}" in
     exec docker compose $profiles up -d
     ;;
   off)
+    fleet=""
+    n=1
+    while [ "$n" -le 30 ]; do
+      fleet="$fleet kali$(printf '%02d' "$n") ubuntu$(printf '%02d' "$n")"
+      n=$((n + 1))
+    done
     # shellcheck disable=SC2086
-    services=$(docker compose $profiles config --services)
-    services=$(printf '%s\n' "$services" | grep -vx -e dnsmasq -e derek -e vyas -e kali111 -e ubuntu111 || true)
-    if [ -z "$services" ]; then
-      exit 0
-    fi
-    # IDs only. Do not pass the service list to `docker compose stop`.
-    # shellcheck disable=SC2086
-    ids=$(docker compose $profiles ps -aq $services)
+    ids=$(docker compose ps -aq $fleet)
     if [ -z "$ids" ]; then
       exit 0
     fi
-    kept=""
-    for id in $ids; do
-      svc=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$id" 2>/dev/null || true)
-      case "$svc" in
-        ""|dnsmasq|derek|vyas|kali111|ubuntu111) continue ;;
-      esac
-      kept="${kept} ${id}"
-    done
-    if [ -z "$kept" ]; then
-      exit 0
-    fi
     # shellcheck disable=SC2086
-    exec docker stop $kept
+    exec docker stop $ids
     ;;
   extra-containers-off)
     exec docker compose stop derek vyas kali111 ubuntu111

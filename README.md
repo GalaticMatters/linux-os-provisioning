@@ -53,14 +53,14 @@ cp .env.example .env
 ./scripts/lab.sh on
 ```
 
-Start DNS once. `dns-on` starts only dnsmasq. `on` starts the fleet, Caddy, the scheduler, and the persistent desktops (derek, vyas, kali111, ubuntu111, ubuntu100, and ubuntuserver). When `CLOUDFLARE_TUNNEL_TOKEN` is set, `on` also starts the public profile (`cloudflared`). It does not start dnsmasq. Day to day, DNS stays up, and so do derek, vyas, kali111, and ubuntu111:
+Start DNS once. `dns-on` starts only dnsmasq. `on` starts the fleet, Caddy, the scheduler, and the persistent desktops (derek, vyas, kali111, ubuntu111, ubuntu100, and ubuntuserver). When `CLOUDFLARE_TUNNEL_TOKEN` is set, `on` also starts the public profile (`cloudflared`). It does not start dnsmasq. Day to day, `off` stops only kali01–kali30 and ubuntu01–ubuntu30. DNS and every other container stay up:
 
 ```sh
 ./scripts/lab.sh off
 ./scripts/lab.sh on
 ```
 
-`off` stops the resettable fleet and the other non-persistent services: kali01–kali30, ubuntu01–ubuntu30, Caddy, the scheduler, ubuntu100, ubuntuserver, and cloudflared when the public profile is in use. It does that by resolving container IDs with `docker compose ps -aq` for only those services, then `docker stop` on those IDs. It does not pass a service list to `docker compose stop`. dnsmasq, derek, vyas, kali111, and ubuntu111 are not in that ID list, so names such as `cybersecurity.lan` still resolve and those four desktops keep running. `./scripts/lab.sh dns-off` stops only dnsmasq.
+`off` stops only kali01–kali30 and ubuntu01–ubuntu30. It generates those 60 names and `docker stop`s their container IDs. It does not read `docker compose config --services` and it does not call `docker compose stop`. dnsmasq, Caddy, the scheduler, derek, vyas, kali111, ubuntu111, ubuntu100, ubuntuserver, cloudflared, and any other service keep running, so names such as `cybersecurity.lan` still resolve. `./scripts/lab.sh dns-off` stops only dnsmasq.
 
 To stop the four desktops that `off` leaves running:
 
@@ -77,7 +77,7 @@ When names are down, use the console or `10.0.253.1`, then:
 ./scripts/lab.sh on
 ```
 
-`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, so `up -d` does not start dnsmasq. `off` keeps dnsmasq running by stopping container IDs for every service except dnsmasq, derek, vyas, kali111, and ubuntu111. `extra-containers-off` names only those four desktops. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
+`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, so `up -d` does not start dnsmasq. `off` keeps dnsmasq running by stopping only the kali01–kali30 and ubuntu01–ubuntu30 container IDs. `extra-containers-off` names only those four desktops. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
 
 The first start pulls the Kali image (about 4.8 GB). Watch `docker compose ps` and `docker compose logs -f caddy`. Then install the CA and open <https://cybersecurity.lan>.
 
@@ -297,7 +297,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `ubuntu/` | Ubuntu Server image: OpenSSH only, host keys at start |
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
-| `scripts/lab.sh` | `on` starts the lab and does not start dnsmasq. `off` stops the fleet and leaves dnsmasq, derek, vyas, kali111, and ubuntu111 running. `extra-containers-off` stops only those four desktops. `dns-on` / `dns-off` start and stop only dnsmasq |
+| `scripts/lab.sh` | `on` starts the lab and does not start dnsmasq. `off` stops only kali01–kali30 and ubuntu01–ubuntu30. `extra-containers-off` stops only derek, vyas, kali111, and ubuntu111. `dns-on` / `dns-off` start and stop only dnsmasq |
 | `scripts/export-ca.sh` | Copy the Caddy root out of the volume |
 | `scripts/reset-now.sh` | Recreate both fleets now |
 
