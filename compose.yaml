@@ -2,66 +2,16 @@
 # Kali desktops: 30. Ubuntu SSH servers: 30.
 # Persistent Mint desktops derek and vyas are not part of the fleet reset.
 # Every service has mem_limit 4g. That is a ceiling, not a reservation.
-# kali01-kali30 stay on the desktop bridge only. They are not on macvlan.
+# kali01 is 10.0.253.55 and kali30 is 10.0.253.84 on desktop and macvlan.
+# Caddy still reaches each kaliNN by container name on the desktop bridge.
 # Persistent desktops on desktop and macvlan: kali111 10.0.253.50, ubuntu111 10.0.253.51, ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54.
-# extra_hosts on those five maps ubuntuNN to the macvlan address.
-# The desktop bridge keeps the default route so Cloudflare still reaches
-# http://derek:3000, http://vyas:3000, and kali111 on ports 3000 and 3001.
+# extra_hosts maps ubuntuNN to the macvlan address on the Kali fleet and those five.
+# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001
+# and Cloudflare still reaches http://derek:3000, http://vyas:3000, and kali111.
 # Re-run the script after changing counts, UBUNTU_IP_START, or BASE_DOMAIN.
 # PARENT_IFACE, LAN_SUBNET, and LAN_GATEWAY are still read from .env when Compose starts.
 
 name: cybersecurity-lan
-
-x-logging: &json-logs
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "3"
-
-x-kali: &kali
-  image: lscr.io/linuxserver/kali-linux:latest
-  mem_limit: 4g
-  shm_size: "1gb"
-  restart: unless-stopped
-  stop_grace_period: 20s
-  environment:
-    PUID: ${PUID:-1000}
-    PGID: ${PGID:-1000}
-    TZ: ${TZ:-UTC}
-  tmpfs:
-    - /config:rw,nosuid,nodev,size=${DESKTOP_TMPFS_SIZE:-2g},mode=1777
-  volumes:
-    - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
-  labels:
-    fleet.reset: "true"
-  logging: *json-logs
-  healthcheck:
-    test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3001'"]
-    interval: 30s
-    timeout: 5s
-    retries: 5
-    start_period: 180s
-
-x-ubuntu: &ubuntu
-  image: cybersecurity-ubuntu-ssh:1
-  mem_limit: 4g
-  build: ./ubuntu
-  restart: unless-stopped
-  stop_grace_period: 10s
-  environment:
-    SSH_USER: "${SSH_USER:?Set SSH_USER in .env}"
-    SSH_PUBLIC_KEY: "${SSH_PUBLIC_KEY:-}"
-    SSH_PASSWORD: "${SSH_PASSWORD:-}"
-    TZ: ${TZ:-UTC}
-  labels:
-    fleet.reset: "true"
-  logging: *json-logs
-  healthcheck:
-    test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/22'"]
-    interval: 30s
-    timeout: 5s
-    retries: 5
-    start_period: 20s
 
 x-lab-hosts: &lab-hosts
   - "ubuntu01.cybersecurity.lan:10.0.253.11"
@@ -127,97 +77,269 @@ x-lab-hosts: &lab-hosts
   - "ubuntuserver.cybersecurity.lan:10.0.253.41"
   - "ubuntuserver:10.0.253.41"
 
+x-logging: &json-logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-kali: &kali
+  image: lscr.io/linuxserver/kali-linux:latest
+  mem_limit: 4g
+  shm_size: "1gb"
+  restart: unless-stopped
+  stop_grace_period: 20s
+  environment:
+    PUID: ${PUID:-1000}
+    PGID: ${PGID:-1000}
+    TZ: ${TZ:-UTC}
+  tmpfs:
+    - /config:rw,nosuid,nodev,size=${DESKTOP_TMPFS_SIZE:-2g},mode=1777
+  volumes:
+    - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
+  labels:
+    fleet.reset: "true"
+  extra_hosts: *lab-hosts
+  logging: *json-logs
+  healthcheck:
+    test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3001'"]
+    interval: 30s
+    timeout: 5s
+    retries: 5
+    start_period: 180s
+
+x-ubuntu: &ubuntu
+  image: cybersecurity-ubuntu-ssh:1
+  mem_limit: 4g
+  build: ./ubuntu
+  restart: unless-stopped
+  stop_grace_period: 10s
+  environment:
+    SSH_USER: "${SSH_USER:?Set SSH_USER in .env}"
+    SSH_PUBLIC_KEY: "${SSH_PUBLIC_KEY:-}"
+    SSH_PASSWORD: "${SSH_PASSWORD:-}"
+    TZ: ${TZ:-UTC}
+  labels:
+    fleet.reset: "true"
+  logging: *json-logs
+  healthcheck:
+    test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/22'"]
+    interval: 30s
+    timeout: 5s
+    retries: 5
+    start_period: 20s
+
 services:
   kali01:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.55
   kali02:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.56
   kali03:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.57
   kali04:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.58
   kali05:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.59
   kali06:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.60
   kali07:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.61
   kali08:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.62
   kali09:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.63
   kali10:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.64
   kali11:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.65
   kali12:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.66
   kali13:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.67
   kali14:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.68
   kali15:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.69
   kali16:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.70
   kali17:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.71
   kali18:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.72
   kali19:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.73
   kali20:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.74
   kali21:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.75
   kali22:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.76
   kali23:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.77
   kali24:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.78
   kali25:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.79
   kali26:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.80
   kali27:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.81
   kali28:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.82
   kali29:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.83
   kali30:
     <<: *kali
-    networks: [desktop]
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.84
   ubuntu01:
     <<: *ubuntu
     networks:

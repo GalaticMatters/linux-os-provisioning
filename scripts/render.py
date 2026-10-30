@@ -7,11 +7,12 @@ The example LAN is 10.0.253.0/24. The server is 10.0.253.1. The upstream
 gateway 10.0.253.254 is not assigned to a container. 10.0.253.2 through
 10.0.253.10 are reserved and are not assigned to Ubuntu. ubuntu01 is
 10.0.253.11 and ubuntu30 is 10.0.253.40. ubuntuserver is 10.0.253.41.
-kali01–kali30 resolve to 10.0.253.1 and stay on the desktop bridge only.
-The persistent desktops people use (kali111, ubuntu111, ubuntu100, derek,
-vyas) stay on that bridge and also take 10.0.253.50–54 on the macvlan, so
-a re-render keeps those addresses. Their hosts file maps ubuntuNN names to
-the Ubuntu macvlan addresses.
+kali01–kali30 resolve to 10.0.253.1 for browsers and also take
+10.0.253.55–84 on the macvlan, so a re-render keeps that block. They stay
+on the desktop bridge for Caddy. The persistent desktops (kali111,
+ubuntu111, ubuntu100, derek, vyas) stay on that bridge and take
+10.0.253.50–54. Hosts entries on every Kali desktop and those persistent
+desktops map ubuntuNN names to the Ubuntu macvlan addresses.
 Re-run after changing KALI_COUNT, UBUNTU_COUNT, UBUNTU_IP_START, SERVER_IP, or BASE_DOMAIN.
 """
 
@@ -117,6 +118,7 @@ def ubuntu_ips(
     subnet: ipaddress.IPv4Network,
     gateway: ipaddress.IPv4Address,
     server: ipaddress.IPv4Address,
+    fleet_kali: list[str] | None = None,
 ) -> list[str]:
     reserved = {
         subnet.network_address,
@@ -131,6 +133,9 @@ def ubuntu_ips(
     # hand those addresses to ubuntu01–ubuntu30.
     for _name, raw in PERSISTENT_DESKTOPS:
         reserved.add(ipv4(raw, _name))
+    # 10.0.253.55 upward belongs to kali01–kali30. Do not hand it to Ubuntu.
+    for raw in fleet_kali or []:
+        reserved.add(ipv4(raw, "FLEET_KALI_IP_START"))
     chosen: list[str] = []
     for offset in range(count):
         try:
@@ -143,8 +148,9 @@ def ubuntu_ips(
                 f"Start {start}, count {count}, subnet {subnet}, "
                 f"gateway {gateway}, SERVER_IP {server}. "
                 "Pick a free UBUNTU_IP_START inside LAN_SUBNET that is not the gateway, "
-                "SERVER_IP, 10.0.253.2 through 10.0.253.10, or the persistent "
-                "desktop block 10.0.253.50 through 10.0.253.54."
+                "SERVER_IP, 10.0.253.2 through 10.0.253.10, the persistent "
+                "desktop block 10.0.253.50 through 10.0.253.54, or the Kali "
+                "fleet block that starts at 10.0.253.55."
             )
         chosen.append(str(addr))
     return chosen
@@ -158,7 +164,7 @@ def fleet_names(prefix: str, count: int) -> list[str]:
 # bridge `desktop` (Cloudflare and Caddy use the container name) and on the
 # macvlan LAN at a fixed address. 10.0.253.50 upward: not .1, not the
 # gateway .254, not .2–.10, and not .11–.41 (ubuntu01–ubuntu30 and ubuntuserver).
-# kali01–kali30 are not in this list and are not placed on the macvlan.
+# kali01–kali30 use FLEET_KALI_IP_START and are not in this list.
 PERSISTENT_DESKTOPS: list[tuple[str, str]] = [
     ("kali111", "10.0.253.50"),
     ("ubuntu111", "10.0.253.51"),
@@ -207,6 +213,64 @@ def check_persistent_desktops(
             )
         seen.add(addr)
 
+
+# kali01–kali30. One address each, starting at 10.0.253.55 (kali30 is
+# 10.0.253.84). Outside 10.0.253.1, .2–.10, .11–.41, .50–.54, and the
+# gateway 10.0.253.254. A re-render keeps this start address.
+FLEET_KALI_IP_START = "10.0.253.55"
+
+
+def fleet_kali_addresses(count: int) -> list[str]:
+    start = ipv4(FLEET_KALI_IP_START, "FLEET_KALI_IP_START")
+    chosen: list[str] = []
+    for offset in range(count):
+        try:
+            addr = start + offset
+        except ipaddress.AddressValueError:
+            addr = None
+        if not isinstance(addr, ipaddress.IPv4Address):
+            raise SystemExit(
+                f"Kali fleet address {FLEET_KALI_IP_START}+{offset} does not fit. "
+                "kali01 starts at 10.0.253.55."
+            )
+        chosen.append(str(addr))
+    return chosen
+
+
+def check_fleet_kali(
+    addrs: list[str],
+    subnet: ipaddress.IPv4Network,
+    gateway: ipaddress.IPv4Address,
+    server: ipaddress.IPv4Address,
+    ubuntu_addrs: list[str],
+    server_box: str,
+) -> None:
+    forbidden: set[ipaddress.IPv4Address] = {
+        subnet.network_address,
+        subnet.broadcast_address,
+        gateway,
+        server,
+        ipaddress.IPv4Address("10.0.253.1"),
+        ipaddress.IPv4Address("10.0.253.254"),
+    }
+    for octet in range(2, 42):
+        forbidden.add(ipaddress.IPv4Address(f"10.0.253.{octet}"))
+    for name, raw in PERSISTENT_DESKTOPS:
+        forbidden.add(ipv4(raw, name))
+    for raw in ubuntu_addrs:
+        forbidden.add(ipv4(raw, "UBUNTU_IP_START"))
+    forbidden.add(ipv4(server_box, "UBUNTU_SERVER_IP"))
+    seen: set[ipaddress.IPv4Address] = set()
+    for index, raw in enumerate(addrs, 1):
+        addr = ipv4(raw, f"kali{index:02d}")
+        if addr not in subnet or addr in forbidden or addr in seen:
+            raise SystemExit(
+                f"kali{index:02d} address {addr} is not a free macvlan address. "
+                "The Kali fleet starts at 10.0.253.55 "
+                "(kali01–kali30 are 10.0.253.55–84), outside 10.0.253.1, "
+                "10.0.253.2-10, 10.0.253.11-41, and 10.0.253.50-54."
+            )
+        seen.add(addr)
 
 
 def dual_lan(addr: str) -> list[str]:
@@ -292,21 +356,24 @@ def render_compose(
     extra: list[tuple[str, str]],
 ) -> str:
     desktop_note = ", ".join(f"{name} {addr}" for name, addr in PERSISTENT_DESKTOPS)
+    kali_addrs = fleet_kali_addresses(len(kali))
     lines = [
         "# Generated by scripts/render.py. Do not edit by hand.",
         f"# Kali desktops: {len(kali)}. Ubuntu SSH servers: {len(ubuntu)}.",
         "# Persistent Mint desktops derek and vyas are not part of the fleet reset.",
         "# Every service has mem_limit 4g. That is a ceiling, not a reservation.",
-        "# kali01-kali30 stay on the desktop bridge only. They are not on macvlan.",
+        f"# {kali[0]} is {kali_addrs[0]} and {kali[-1]} is {kali_addrs[-1]} on desktop and macvlan.",
+        "# Caddy still reaches each kaliNN by container name on the desktop bridge.",
         f"# Persistent desktops on desktop and macvlan: {desktop_note}.",
-        "# extra_hosts on those five maps ubuntuNN to the macvlan address.",
-        "# The desktop bridge keeps the default route so Cloudflare still reaches",
-        "# http://derek:3000, http://vyas:3000, and kali111 on ports 3000 and 3001.",
+        "# extra_hosts maps ubuntuNN to the macvlan address on the Kali fleet and those five.",
+        "# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001",
+        "# and Cloudflare still reaches http://derek:3000, http://vyas:3000, and kali111.",
         "# Re-run the script after changing counts, UBUNTU_IP_START, or BASE_DOMAIN.",
         "# PARENT_IFACE, LAN_SUBNET, and LAN_GATEWAY are still read from .env when Compose starts.",
         "",
         "name: cybersecurity-lan",
         "",
+        *lab_host_lines(domain, ubuntu, extra),
         "x-logging: &json-logs",
         "  driver: json-file",
         "  options:",
@@ -329,6 +396,7 @@ def render_compose(
         "    - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro",
         "  labels:",
         '    fleet.reset: "true"',
+        "  extra_hosts: *lab-hosts",
         "  logging: *json-logs",
         "  healthcheck:",
         '    test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3001\'"]',
@@ -358,14 +426,17 @@ def render_compose(
         "    retries: 5",
         "    start_period: 20s",
         "",
-        *lab_host_lines(domain, ubuntu, extra),
         "services:",
     ]
-    for name in kali:
+    for name, addr in zip(kali, kali_addrs):
         lines += [
             f"  {name}:",
             "    <<: *kali",
-            "    networks: [desktop]",
+            "    networks:",
+            "      desktop:",
+            "        gw_priority: 100",
+            "      lan:",
+            f"        ipv4_address: {addr}",
         ]
     for name, addr in ubuntu:
         lines += [
@@ -750,7 +821,8 @@ def main() -> int:
     kali_count = parse_count(env, "KALI_COUNT", 30)
     ubuntu_count = parse_count(env, "UBUNTU_COUNT", 30)
     kali = fleet_names("kali", kali_count)
-    addresses = ubuntu_ips(start, ubuntu_count, subnet, gateway, server)
+    kali_addrs = fleet_kali_addresses(kali_count)
+    addresses = ubuntu_ips(start, ubuntu_count, subnet, gateway, server, kali_addrs)
     ubuntu = list(zip(fleet_names("ubuntu", ubuntu_count), addresses))
     server_box = str(ipv4(env.get("UBUNTU_SERVER_IP", "10.0.253.41").strip() or "10.0.253.41", "UBUNTU_SERVER_IP"))
     if server_box in addresses or server_box in {str(server), str(gateway)}:
@@ -761,6 +833,9 @@ def main() -> int:
     desktop_ips = {addr for _name, addr in PERSISTENT_DESKTOPS}
     if server_box in desktop_ips:
         raise SystemExit(f"UBUNTU_SERVER_IP {server_box} is a persistent desktop address")
+    check_fleet_kali(kali_addrs, subnet, gateway, server, addresses, server_box)
+    if set(kali_addrs) & desktop_ips:
+        raise SystemExit("Kali fleet addresses overlap the persistent desktop block")
 
     write(root / "compose.yaml", render_compose(kali, ubuntu, domain, extra))
     write(root / "caddy" / "Caddyfile", render_caddy(kali, ["kali111", "ubuntu100", "ubuntu111"]))
@@ -770,6 +845,7 @@ def main() -> int:
     print(
         f"Rendered {kali_count} Kali and {ubuntu_count} Ubuntu from {env_path}. "
         f"Ubuntu addresses {addresses[0]}-{addresses[-1]}. "
+        f"Kali fleet macvlan {kali_addrs[0]}-{kali_addrs[-1]}. "
         "Persistent desktops "
         + ", ".join(f"{name} {addr}" for name, addr in PERSISTENT_DESKTOPS)
         + "."

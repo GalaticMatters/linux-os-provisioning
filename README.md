@@ -34,7 +34,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | Name | Address | What it is |
 | --- | --- | --- |
 | `https://cybersecurity.lan` | `10.0.253.1` (`SERVER_IP`) | List of Kali desktops, and the SSH names |
-| `https://kali01.cybersecurity.lan` … `kali30.cybersecurity.lan` | `10.0.253.1` (`SERVER_IP`) | Kali KDE in the browser. Two-digit names. Behind Caddy on the server, not on macvlan. |
+| `https://kali01.cybersecurity.lan` … `kali30.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.55` … `10.0.253.84` | Kali KDE in the browser. Also on the `desktop` bridge so Caddy can reach `kaliNN:3001`. Ping and SSH to Ubuntu from the desktop. |
 | `ssh student@ubuntu01.cybersecurity.lan` … `ubuntu30` | `10.0.253.11` … `10.0.253.40` | Ubuntu Server, one macvlan address each, SSH port 22 only |
 | `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000`, macvlan `10.0.253.53` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000`, macvlan `10.0.253.54` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
@@ -42,9 +42,9 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | ubuntu111 | macvlan `10.0.253.51`, still `ubuntu111` on the `desktop` bridge | Persistent Ubuntu desktop. Same reachability. |
 | ubuntu100 | macvlan `10.0.253.52`, still `ubuntu100` on the `desktop` bridge | Persistent Ubuntu desktop on the 500 GB disk. Same reachability. |
 
-Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. Those thirty stay behind Caddy on the server. They are not on macvlan. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the Kali container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
+Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. Browsers stay on Caddy. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the Kali container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
 
-kali111 is the exception: it stays on that same bridge, so Caddy and Cloudflare still use the container name (`kali111:3001`, and port 3000), and it also has macvlan `10.0.253.50`. Ping and SSH to `ubuntu01.cybersecurity.lan` are done from kali111, ubuntu111, ubuntu100, derek, or vyas. kali01–kali30 are not attached to the macvlan.
+Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10.0.253.55` for kali01 through `10.0.253.84` for kali30. kali111 stays on the same bridge, so Caddy and Cloudflare still use the container name (`kali111:3001`, and port 3000), and it has macvlan `10.0.253.50`. Ping and SSH to `ubuntu01.cybersecurity.lan` work from kali01–kali30 and from kali111, ubuntu111, ubuntu100, derek, or vyas.
 
 All 30 Kali containers share one image, `lscr.io/linuxserver/kali-linux:latest`. There is one copy of that image on disk.
 
@@ -147,7 +147,27 @@ Host keys are created when the container starts (`ssh-keygen -A`). They are not 
 
 Ubuntu is attached to the `cybersecurity-macvlan` network (`driver: macvlan`, parent `PARENT_IFACE`). Each service has a fixed `ipv4_address`, and dnsmasq (and `dns/hosts.example`) has a matching A record.
 
-Five persistent desktops are on that macvlan as well as the `desktop` bridge. [`scripts/render.py`](scripts/render.py) pins the addresses, so a re-render keeps them. kali01–kali30 are not in this block.
+kali01–kali30 and five persistent desktops are on that macvlan as well as the `desktop` bridge. [`scripts/render.py`](scripts/render.py) pins both blocks, so a re-render keeps them.
+
+kali01 is `10.0.253.55` and kali30 is `10.0.253.84`. That block is not `10.0.253.1`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.41`, and not `10.0.253.50`–`10.0.253.54`. Each Kali service keeps `extra_hosts`, so `ubuntu01` and `ubuntu01.cybersecurity.lan` resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40`. Caddy still opens `https://kaliNN:3001` on the bridge. The bridge keeps the default route (`gw_priority`).
+
+After `git pull` on the ProLiant, recreate the thirty Kali desktops so they join the macvlan, then restart Caddy so it drops cached bridge addresses. This is not `lab.sh off`. `./scripts/lab.sh off` still stops only kali01–kali30 and ubuntu01–ubuntu30:
+
+```sh
+git pull
+docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'kali%02d ' "$n"; done)
+docker compose restart caddy
+```
+
+From a terminal on kali01 (or any kaliNN):
+
+```sh
+ping -c 2 10.0.253.11
+ping -c 2 ubuntu01.cybersecurity.lan
+ssh student@ubuntu01.cybersecurity.lan
+```
+
+Persistent desktops, same idea, different addresses:
 
 | Desktop | Macvlan address | Still reachable on `desktop` as |
 | --- | --- | --- |
@@ -187,7 +207,7 @@ The ProLiant cannot ping macvlan addresses such as `10.0.253.11` (`ubuntu01`). L
 docker exec -it ubuntu01 bash
 ```
 
-Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.41`, and not the persistent desktop block `10.0.253.50`–`10.0.253.54`. This is not created for you:
+Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.41`, not the persistent desktop block `10.0.253.50`–`10.0.253.54`, and not the Kali fleet block `10.0.253.55`–`10.0.253.84`. This is not created for you:
 
 ```sh
 # PARENT_IFACE is the interface which already has 10.0.253.1 (br-ex or eno1).
@@ -199,7 +219,7 @@ for i in $(seq 11 40); do
 done
 ```
 
-`10.0.253.100` is only an example shim address: not the gateway `10.0.253.254`, not `10.0.253.1`, not in the reserved range `10.0.253.2`–`10.0.253.10`, not in the Ubuntu range `10.0.253.11`–`10.0.253.41`, and not in the persistent desktop block `10.0.253.50`–`10.0.253.54`. The parent has to accept the extra MACs (promiscuous mode, no port security, not typical Wi-Fi). Cloud interfaces often drop them, and then the containers stay unreachable from the LAN.
+`10.0.253.100` is only an example shim address: not the gateway `10.0.253.254`, not `10.0.253.1`, not in the reserved range `10.0.253.2`–`10.0.253.10`, not in the Ubuntu range `10.0.253.11`–`10.0.253.41`, not in the persistent desktop block `10.0.253.50`–`10.0.253.54`, and not in the Kali fleet block `10.0.253.55`–`10.0.253.84`. The parent has to accept the extra MACs (promiscuous mode, no port security, not typical Wi-Fi). Cloud interfaces often drop them, and then the containers stay unreachable from the LAN.
 
 `PARENT_IFACE`, `LAN_SUBNET`, and `LAN_GATEWAY` are read when Compose starts. Changing only the NIC does not require a re-render. The Ubuntu addresses are written into `compose.yaml` and `dns/records.conf`, so they still have to fall inside the subnet you set.
 
@@ -354,7 +374,8 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 
 - **Ubuntu container exits immediately.** Neither `SSH_PUBLIC_KEY` nor `SSH_PASSWORD` is set, or `SSH_USER` is `root` or not a lowercase account name. `docker compose logs ubuntu01`.
 - **The ProLiant cannot ping `10.0.253.11` (`ubuntu01`). A lab PC can.** SSH from the ProLiant to that address times out the same way. Macvlan on the same NIC. Use `docker exec`, the shim above, or a terminal on kali111, ubuntu111, ubuntu100, derek, or vyas.
-- **kali111 cannot ping `10.0.253.11` or `ubuntu01.cybersecurity.lan`.** That desktop was not recreated after the macvlan addresses landed. From the repo, `docker compose up -d --force-recreate --no-deps kali111 ubuntu111 ubuntu100 derek vyas`. kali01–kali30 are not on the macvlan, so a shell there still cannot reach the Ubuntu LAN.
+- **kali111 cannot ping `10.0.253.11` or `ubuntu01.cybersecurity.lan`.** That desktop was not recreated after the macvlan addresses landed. From the repo, `docker compose up -d --force-recreate --no-deps kali111 ubuntu111 ubuntu100 derek vyas`.
+- **kali01 cannot ping `ubuntu01.cybersecurity.lan`.** Recreate the fleet so it picks up `10.0.253.55`–`10.0.253.84`: `docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'kali%02d ' "$n"; done)`, then `docker compose restart caddy`.
 - **Names do not resolve.** dnsmasq is stopped. From the console, or from `10.0.253.1`, run `./scripts/lab.sh dns-on`, then `./scripts/lab.sh on`.
 - **SSH from the LAN times out.** `PARENT_IFACE` is wrong, the address is outside the real subnet, or the switch is dropping the extra MAC.
 - **`known_hosts` mismatch.** The 02:00 reset replaced the host keys. Remove the old line and connect again.
