@@ -2,8 +2,9 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-# .env sets COMPOSE_PROFILES=dns. on/off must not inherit that, or a lab
-# reset starts and stops dnsmasq with the desktops.
+# .env sets COMPOSE_PROFILES=dns. Clear it so `on` (`up -d`) does not
+# start dnsmasq. `off` still names services and drops dnsmasq: a bare
+# `docker compose stop` stops every running container in the project.
 export COMPOSE_PROFILES=""
 
 profiles=""
@@ -23,7 +24,13 @@ case "${1:-}" in
     ;;
   off)
     # shellcheck disable=SC2086
-    exec docker compose $profiles stop
+    services=$(docker compose $profiles config --services)
+    services=$(printf '%s\n' "$services" | grep -vx dnsmasq || true)
+    if [ -z "$services" ]; then
+      exit 0
+    fi
+    # shellcheck disable=SC2086
+    exec docker compose $profiles stop $services
     ;;
   dns-on)
     exec docker compose --profile dns up -d dnsmasq

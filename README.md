@@ -60,7 +60,7 @@ Start DNS once. `dns-on` starts only dnsmasq. `on` starts the fleet, Caddy, the 
 ./scripts/lab.sh on
 ```
 
-`off` stops the desktops and leaves dnsmasq running, so names such as `cybersecurity.lan` still resolve and you can turn the lab back on. `./scripts/lab.sh dns-off` stops only dnsmasq.
+`off` stops the services named by `docker compose config --services` for the profiles already in use, and drops `dnsmasq` from that list, so names such as `cybersecurity.lan` still resolve and you can turn the lab back on. `./scripts/lab.sh dns-off` stops only dnsmasq.
 
 When names are down, use the console or `10.0.253.1`, then:
 
@@ -69,7 +69,7 @@ When names are down, use the console or `10.0.253.1`, then:
 ./scripts/lab.sh on
 ```
 
-`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on` and `off`, so a copied `.env` cannot pull dnsmasq into a lab reset. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
+`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, so `up -d` does not start dnsmasq. `off` keeps dnsmasq running by stopping that service list. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
 
 The first start pulls the Kali image (about 4.8 GB). Watch `docker compose ps` and `docker compose logs -f caddy`. Then install the CA and open <https://cybersecurity.lan>.
 
