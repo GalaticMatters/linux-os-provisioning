@@ -2,34 +2,27 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-# .env sets COMPOSE_PROFILES=dns. Clear it so `on` (`up -d`) does not
-# start dnsmasq. `off` stops only kali01–kali30 and ubuntu01–ubuntu30,
-# by container ID. It does not ask Compose for the service list.
+# .env sets COMPOSE_PROFILES=dns. Clear it so `on` does not start dnsmasq.
+# `on` and `off` use only kali01–kali30 and ubuntu01–ubuntu30.
+# `on` is `docker compose up -d` with those names, not a bare `up -d`,
+# so kali111 and the other containers are not recreated.
+# `off` docker stops only those container IDs.
 # `extra-containers-off` stops only derek, vyas, kali111, and ubuntu111.
 export COMPOSE_PROFILES=""
 
-profiles=""
-token=""
-if [ -f .env ]; then
-  token=$(sed -n 's/^CLOUDFLARE_TUNNEL_TOKEN=//p' .env | tail -n 1)
-fi
-case "$token" in
-  ""|unused) ;;
-  *) profiles="--profile public" ;;
-esac
+fleet=""
+n=1
+while [ "$n" -le 30 ]; do
+  fleet="$fleet kali$(printf '%02d' "$n") ubuntu$(printf '%02d' "$n")"
+  n=$((n + 1))
+done
 
 case "${1:-}" in
   on)
     # shellcheck disable=SC2086
-    exec docker compose $profiles up -d
+    exec docker compose up -d $fleet
     ;;
   off)
-    fleet=""
-    n=1
-    while [ "$n" -le 30 ]; do
-      fleet="$fleet kali$(printf '%02d' "$n") ubuntu$(printf '%02d' "$n")"
-      n=$((n + 1))
-    done
     # shellcheck disable=SC2086
     ids=$(docker compose ps -aq $fleet)
     if [ -z "$ids" ]; then

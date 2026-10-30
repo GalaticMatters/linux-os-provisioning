@@ -58,7 +58,7 @@ cp .env.example .env
 ./scripts/lab.sh on
 ```
 
-Start DNS once. `dns-on` starts only dnsmasq. `on` starts the fleet, Caddy, the scheduler, and the persistent desktops (derek, vyas, kali111, ubuntu111, ubuntu100, and ubuntuserver). When `CLOUDFLARE_TUNNEL_TOKEN` is set, `on` also starts the public profile (`cloudflared`). It does not start dnsmasq. Day to day, `off` stops only kali01–kali30 and ubuntu01–ubuntu30. DNS and every other container stay up:
+Start DNS once. `dns-on` starts only dnsmasq. `on` starts only kali01–kali30 and ubuntu01–ubuntu30. It runs `docker compose up -d` with those 60 names, not a bare `up -d`, so it does not recreate or restart kali111, derek, vyas, ubuntu111, ubuntu100, ubuntuserver, Caddy, dnsmasq, or cloudflared. Day to day, `off` stops only those same 60. DNS and every other container stay up:
 
 ```sh
 ./scripts/lab.sh off
@@ -82,7 +82,7 @@ When names are down, use the console or `10.0.253.1`, then:
 ./scripts/lab.sh on
 ```
 
-`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, so `up -d` does not start dnsmasq. `off` keeps dnsmasq running by stopping only the kali01–kali30 and ubuntu01–ubuntu30 container IDs. `extra-containers-off` names only those four desktops. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
+`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, and `on` names only kali01–kali30 and ubuntu01–ubuntu30, so dnsmasq does not start. `off` keeps dnsmasq running by stopping only the kali01–kali30 and ubuntu01–ubuntu30 container IDs. `extra-containers-off` names only those four desktops. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
 
 The first start pulls the Kali image (about 4.8 GB). Watch `docker compose ps` and `docker compose logs -f caddy`. Then install the CA and open <https://cybersecurity.lan>.
 
@@ -123,9 +123,9 @@ git pull
 docker compose up -d --force-recreate --no-deps derek vyas
 ```
 
-`docker compose up -d --force-recreate --no-deps derek vyas` recreates only those two containers so they pick up the account and the home mount. The named volumes stay. This is not the 02:00 fleet reset. `lab.sh on` also starts them with the rest of the lab. `lab.sh off` leaves derek and vyas running (and kali111 and ubuntu111). `lab.sh extra-containers-off` stops only derek, vyas, kali111, and ubuntu111. It does not stop dnsmasq or the fleet. If `CLOUDFLARE_TUNNEL_TOKEN` is set, `lab.sh on` starts the existing `cloudflared`. It does not start or stop dnsmasq. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
+`docker compose up -d --force-recreate --no-deps derek vyas` recreates only those two containers so they pick up the account and the home mount. The named volumes stay. This is not the 02:00 fleet reset. `lab.sh on` does not start or recreate them. It only runs `docker compose up -d` for kali01–kali30 and ubuntu01–ubuntu30. `lab.sh off` leaves derek and vyas running (and kali111 and ubuntu111). `lab.sh extra-containers-off` stops only derek, vyas, kali111, and ubuntu111. It does not stop dnsmasq or the fleet. `lab.sh on` does not start or stop dnsmasq or cloudflared. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
 
-The containers run systemd so Cinnamon and the HTTP desktop can start. They stay privileged because systemd needs that to bring the session up. They do not set `cgroup: host` and they do not mount the host `/sys/fs/cgroup`. A host cgroup namespace makes the container exit when another container stops. They stay on the `desktop` network and on the macvlan LAN. The first start installs noVNC, so it takes longer than a later start. The next `./scripts/lab.sh on` recreates derek and vyas once so the running containers drop the host cgroup namespace. After that, `off` leaves them running.
+The containers run systemd so Cinnamon and the HTTP desktop can start. They stay privileged because systemd needs that to bring the session up. They do not set `cgroup: host` and they do not mount the host `/sys/fs/cgroup`. A host cgroup namespace makes the container exit when another container stops. They stay on the `desktop` network and on the macvlan LAN. The first start installs noVNC, so it takes longer than a later start. `./scripts/lab.sh on` does not recreate them.
 
 ## SSH
 
@@ -356,7 +356,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `ubuntu/` | Ubuntu Server image: OpenSSH only, host keys at start |
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
-| `scripts/lab.sh` | `on` starts the lab and does not start dnsmasq. `off` stops only kali01–kali30 and ubuntu01–ubuntu30. `extra-containers-off` stops only derek, vyas, kali111, and ubuntu111. `dns-on` / `dns-off` start and stop only dnsmasq |
+| `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-off` stops only derek, vyas, kali111, and ubuntu111. `dns-on` / `dns-off` start and stop only dnsmasq |
 | `scripts/export-ca.sh` | Copy the Caddy root out of the volume |
 | `scripts/reset-now.sh` | Recreate both fleets now |
 
