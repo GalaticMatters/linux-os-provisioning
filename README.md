@@ -67,13 +67,14 @@ Start DNS once. `dns-on` starts only dnsmasq. `on` starts only kali01–kali30 a
 
 `off` stops only kali01–kali30 and ubuntu01–ubuntu30. It generates those 60 names and `docker stop`s their container IDs. It does not read `docker compose config --services` and it does not call `docker compose stop`. dnsmasq, Caddy, the scheduler, derek, vyas, kali111, ubuntu111, ubuntu100, ubuntuserver, cloudflared, and any other service keep running, so names such as `cybersecurity.lan` still resolve. `./scripts/lab.sh dns-off` stops only dnsmasq.
 
-To stop the four desktops that `off` leaves running:
+To start or stop the four desktops that `on` and `off` leave alone:
 
 ```sh
+./scripts/lab.sh extra-containers-on
 ./scripts/lab.sh extra-containers-off
 ```
 
-`extra-containers-off` stops only derek, vyas, kali111, and ubuntu111. It does not stop dnsmasq or the fleet.
+`extra-containers-on` starts only derek, vyas, kali111, and ubuntu111 (`docker compose up -d` with those four names). It does not start the fleet or dnsmasq, and it does not recreate unrelated services. `extra-containers-off` stops only those four. It does not stop dnsmasq or the fleet.
 
 When names are down, use the console or `10.0.253.1`, then:
 
@@ -82,7 +83,7 @@ When names are down, use the console or `10.0.253.1`, then:
 ./scripts/lab.sh on
 ```
 
-`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, and `on` names only kali01–kali30 and ubuntu01–ubuntu30, so dnsmasq does not start. `off` keeps dnsmasq running by stopping only the kali01–kali30 and ubuntu01–ubuntu30 container IDs. `extra-containers-off` names only those four desktops. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
+`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, and `on` names only kali01–kali30 and ubuntu01–ubuntu30, so dnsmasq does not start. `off` keeps dnsmasq running by stopping only the kali01–kali30 and ubuntu01–ubuntu30 container IDs. `extra-containers-on` starts only those four desktops, and `extra-containers-off` stops only them. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
 
 The first start pulls the Kali image (about 4.8 GB). Watch `docker compose ps` and `docker compose logs -f caddy`. Then install the CA and open <https://cybersecurity.lan>.
 
@@ -123,7 +124,7 @@ git pull
 docker compose up -d --force-recreate --no-deps derek vyas
 ```
 
-`docker compose up -d --force-recreate --no-deps derek vyas` recreates only those two containers so they pick up the account and the home mount. The named volumes stay. This is not the 02:00 fleet reset. `lab.sh on` does not start or recreate them. It only runs `docker compose up -d` for kali01–kali30 and ubuntu01–ubuntu30. `lab.sh off` leaves derek and vyas running (and kali111 and ubuntu111). `lab.sh extra-containers-off` stops only derek, vyas, kali111, and ubuntu111. It does not stop dnsmasq or the fleet. `lab.sh on` does not start or stop dnsmasq or cloudflared. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
+`docker compose up -d --force-recreate --no-deps derek vyas` recreates only those two containers so they pick up the account and the home mount. The named volumes stay. This is not the 02:00 fleet reset. `lab.sh on` does not start or recreate them. It only runs `docker compose up -d` for kali01–kali30 and ubuntu01–ubuntu30. `lab.sh off` leaves derek and vyas running (and kali111 and ubuntu111). `lab.sh extra-containers-on` starts only derek, vyas, kali111, and ubuntu111. `lab.sh extra-containers-off` stops only those four. Neither starts the fleet or dnsmasq, and neither recreates unrelated services. `lab.sh on` does not start or stop dnsmasq or cloudflared. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
 
 The containers run systemd so Cinnamon and the HTTP desktop can start. They stay privileged because systemd needs that to bring the session up. They do not set `cgroup: host` and they do not mount the host `/sys/fs/cgroup`. A host cgroup namespace makes the container exit when another container stops. They stay on the `desktop` network and on the macvlan LAN. The first start installs noVNC, so it takes longer than a later start. `./scripts/lab.sh on` does not recreate them.
 
@@ -251,7 +252,7 @@ Pick one. You do not need all three.
 
 ### Bundled dnsmasq
 
-Start it once with `./scripts/lab.sh dns-on`. `on`, `off`, and `extra-containers-off` leave it running. `dns-off` stops only dnsmasq. The `dnsmasq` service listens on `SERVER_IP:53`. It answers the apex and each `kaliNN` name with `SERVER_IP`, and each `ubuntuNN` name with that container’s macvlan address. Other names go to `UPSTREAM_DNS_1` and `UPSTREAM_DNS_2` (1.1.1.1 and 1.0.0.1 unless you change them).
+Start it once with `./scripts/lab.sh dns-on`. `on`, `off`, `extra-containers-on`, and `extra-containers-off` leave it running. `dns-off` stops only dnsmasq. The `dnsmasq` service listens on `SERVER_IP:53`. It answers the apex and each `kaliNN` name with `SERVER_IP`, and each `ubuntuNN` name with that container’s macvlan address. Other names go to `UPSTREAM_DNS_1` and `UPSTREAM_DNS_2` (1.1.1.1 and 1.0.0.1 unless you change them).
 
 There is no wildcard for the zone. A wildcard would send the Ubuntu names to `SERVER_IP`.
 
@@ -356,7 +357,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `ubuntu/` | Ubuntu Server image: OpenSSH only, host keys at start |
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
-| `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-off` stops only derek, vyas, kali111, and ubuntu111. `dns-on` / `dns-off` start and stop only dnsmasq |
+| `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, and ubuntu111. `dns-on` / `dns-off` start and stop only dnsmasq |
 | `scripts/export-ca.sh` | Copy the Caddy root out of the volume |
 | `scripts/reset-now.sh` | Recreate both fleets now |
 

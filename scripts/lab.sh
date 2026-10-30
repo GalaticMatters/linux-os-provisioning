@@ -7,7 +7,8 @@ cd "$(dirname "$0")/.."
 # `on` is `docker compose up -d` with those names, not a bare `up -d`,
 # so kali111 and the other containers are not recreated.
 # `off` docker stops only those container IDs.
-# `extra-containers-off` stops only derek, vyas, kali111, and ubuntu111.
+# `extra-containers-on` starts only derek, vyas, kali111, and ubuntu111.
+# `extra-containers-off` stops only those four.
 export COMPOSE_PROFILES=""
 
 fleet=""
@@ -31,6 +32,9 @@ case "${1:-}" in
     # shellcheck disable=SC2086
     exec docker stop $ids
     ;;
+  extra-containers-on)
+    exec docker compose up -d derek vyas kali111 ubuntu111
+    ;;
   extra-containers-off)
     exec docker compose stop derek vyas kali111 ubuntu111
     ;;
@@ -41,7 +45,7 @@ case "${1:-}" in
     exec docker compose --profile dns stop dnsmasq
     ;;
   *)
-    echo "usage: $0 on|off|extra-containers-off|dns-on|dns-off" >&2
+    echo "usage: $0 on|off|extra-containers-on|extra-containers-off|dns-on|dns-off" >&2
     exit 2
     ;;
 esac
