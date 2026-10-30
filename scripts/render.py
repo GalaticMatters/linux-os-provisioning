@@ -3,10 +3,15 @@
 
 Writes compose.yaml, caddy/Caddyfile, caddy/site/index.html, dns/records.conf,
 and dns/hosts.example. Defaults are 30 Kali desktops and 30 Ubuntu SSH servers.
-The example LAN is 10.0.253.0/24. The server and gateway are 10.0.253.1.
-10.0.253.2 through 10.0.253.10 are reserved and are not assigned to Ubuntu.
-ubuntu01 is 10.0.253.11 and ubuntu30 is 10.0.253.40. Kali names resolve to
-10.0.253.1 and stay behind Caddy; they are not placed on the macvlan.
+The example LAN is 10.0.253.0/24. The server is 10.0.253.1. The upstream
+gateway 10.0.253.254 is not assigned to a container. 10.0.253.2 through
+10.0.253.10 are reserved and are not assigned to Ubuntu. ubuntu01 is
+10.0.253.11 and ubuntu30 is 10.0.253.40. ubuntuserver is 10.0.253.41.
+kali01–kali30 resolve to 10.0.253.1 and stay on the desktop bridge only.
+The persistent desktops people use (kali111, ubuntu111, ubuntu100, derek,
+vyas) stay on that bridge and also take 10.0.253.50–54 on the macvlan, so
+a re-render keeps those addresses. Their hosts file maps ubuntuNN names to
+the Ubuntu macvlan addresses.
 Re-run after changing KALI_COUNT, UBUNTU_COUNT, UBUNTU_IP_START, SERVER_IP, or BASE_DOMAIN.
 """
 
@@ -122,6 +127,10 @@ def ubuntu_ips(
     # 10.0.253.2 through 10.0.253.10 are reserved. Do not assign them to Ubuntu.
     for octet in range(2, 11):
         reserved.add(ipaddress.IPv4Address(f"10.0.253.{octet}"))
+    # 10.0.253.50–54 belong to the persistent desktops. A re-render must not
+    # hand those addresses to ubuntu01–ubuntu30.
+    for _name, raw in PERSISTENT_DESKTOPS:
+        reserved.add(ipv4(raw, _name))
     chosen: list[str] = []
     for offset in range(count):
         try:
@@ -134,7 +143,8 @@ def ubuntu_ips(
                 f"Start {start}, count {count}, subnet {subnet}, "
                 f"gateway {gateway}, SERVER_IP {server}. "
                 "Pick a free UBUNTU_IP_START inside LAN_SUBNET that is not the gateway, "
-                "SERVER_IP, or 10.0.253.2 through 10.0.253.10."
+                "SERVER_IP, 10.0.253.2 through 10.0.253.10, or the persistent "
+                "desktop block 10.0.253.50 through 10.0.253.54."
             )
         chosen.append(str(addr))
     return chosen
@@ -144,6 +154,93 @@ def fleet_names(prefix: str, count: int) -> list[str]:
     return [f"{prefix}{index:02d}" for index in range(1, count + 1)]
 
 
+# Persistent desktops that stay up across lab off. Each is on the Compose
+# bridge `desktop` (Cloudflare and Caddy use the container name) and on the
+# macvlan LAN at a fixed address. 10.0.253.50 upward: not .1, not the
+# gateway .254, not .2–.10, and not .11–.41 (ubuntu01–ubuntu30 and ubuntuserver).
+# kali01–kali30 are not in this list and are not placed on the macvlan.
+PERSISTENT_DESKTOPS: list[tuple[str, str]] = [
+    ("kali111", "10.0.253.50"),
+    ("ubuntu111", "10.0.253.51"),
+    ("ubuntu100", "10.0.253.52"),
+    ("derek", "10.0.253.53"),
+    ("vyas", "10.0.253.54"),
+]
+
+
+def persistent_addr(name: str) -> str:
+    for desktop, addr in PERSISTENT_DESKTOPS:
+        if desktop == name:
+            return addr
+    raise SystemExit(f"{name} has no macvlan address in PERSISTENT_DESKTOPS")
+
+
+def check_persistent_desktops(
+    subnet: ipaddress.IPv4Network,
+    gateway: ipaddress.IPv4Address,
+    server: ipaddress.IPv4Address,
+    ubuntu_addrs: list[str],
+    server_box: str,
+) -> None:
+    forbidden: set[ipaddress.IPv4Address] = {
+        subnet.network_address,
+        subnet.broadcast_address,
+        gateway,
+        server,
+        ipaddress.IPv4Address("10.0.253.1"),
+        ipaddress.IPv4Address("10.0.253.254"),
+    }
+    for octet in range(2, 42):
+        forbidden.add(ipaddress.IPv4Address(f"10.0.253.{octet}"))
+    for raw in ubuntu_addrs:
+        forbidden.add(ipv4(raw, "UBUNTU_IP_START"))
+    forbidden.add(ipv4(server_box, "UBUNTU_SERVER_IP"))
+    seen: set[ipaddress.IPv4Address] = set()
+    for name, raw in PERSISTENT_DESKTOPS:
+        addr = ipv4(raw, name)
+        if addr not in subnet or addr in forbidden or addr in seen:
+            raise SystemExit(
+                f"{name} address {addr} is not a free macvlan address. "
+                "Persistent desktops use 10.0.253.50 upward, outside "
+                "10.0.253.1, the gateway 10.0.253.254, 10.0.253.2-10, "
+                "and 10.0.253.11-41."
+            )
+        seen.add(addr)
+
+
+
+def dual_lan(addr: str) -> list[str]:
+    """Bridge plus macvlan. The bridge keeps the default route.
+
+    Cloudflare and Caddy resolve the container name on `desktop`.
+    gw_priority on that network keeps internet and container-name traffic
+    there. The macvlan connected route covers 10.0.253.0/24, so ping and
+    SSH to the Ubuntu fleet leave on the LAN interface.
+    """
+    return [
+        "    extra_hosts: *lab-hosts",
+        "    networks:",
+        "      desktop:",
+        "        gw_priority: 100",
+        "      lan:",
+        f"        ipv4_address: {addr}",
+    ]
+
+
+def lab_host_lines(domain: str, ubuntu: list[tuple[str, str]], extra: list[tuple[str, str]]) -> list[str]:
+    """Hosts entries so a desktop resolves ubuntuNN to the macvlan address.
+
+    A macvlan endpoint does not reach the parent address 10.0.253.1, so
+    these containers do not use dnsmasq there. The same addresses dnsmasq
+    publishes are written here. Short names and the zone name both resolve.
+    """
+    lines = ["x-lab-hosts: &lab-hosts"]
+    for name, addr in list(ubuntu) + list(extra):
+        lines.append(f'  - "{name}.{domain}:{addr}"')
+        lines.append(f'  - "{name}:{addr}"')
+    lines.append("")
+    return lines
+
 
 def render_mint(name: str) -> list[str]:
     """Persistent Linux Mint Cinnamon desktop served over HTTP. No fleet.reset label.
@@ -152,7 +249,8 @@ def render_mint(name: str) -> list[str]:
     The browser origin is http://<name>:3000. RDP is not the public path.
     privileged stays so systemd can start the session. No cgroup: host
     and no host /sys/fs/cgroup mount: that namespace exits this container
-    when another container stops.
+    when another container stops. The container stays on `desktop` and
+    also takes its fixed macvlan address.
     """
     key = name.upper()
     return [
@@ -175,7 +273,7 @@ def render_mint(name: str) -> list[str]:
         "      - /run",
         "      - /run/lock",
         "      - /tmp",
-        "    networks: [desktop]",
+        *dual_lan(persistent_addr(name)),
         "    logging: *json-logs",
         "    healthcheck:",
         '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3000\'"]',
@@ -187,12 +285,23 @@ def render_mint(name: str) -> list[str]:
     ]
 
 
-def render_compose(kali: list[str], ubuntu: list[tuple[str, str]]) -> str:
+def render_compose(
+    kali: list[str],
+    ubuntu: list[tuple[str, str]],
+    domain: str,
+    extra: list[tuple[str, str]],
+) -> str:
+    desktop_note = ", ".join(f"{name} {addr}" for name, addr in PERSISTENT_DESKTOPS)
     lines = [
         "# Generated by scripts/render.py. Do not edit by hand.",
         f"# Kali desktops: {len(kali)}. Ubuntu SSH servers: {len(ubuntu)}.",
         "# Persistent Mint desktops derek and vyas are not part of the fleet reset.",
         "# Every service has mem_limit 4g. That is a ceiling, not a reservation.",
+        "# kali01-kali30 stay on the desktop bridge only. They are not on macvlan.",
+        f"# Persistent desktops on desktop and macvlan: {desktop_note}.",
+        "# extra_hosts on those five maps ubuntuNN to the macvlan address.",
+        "# The desktop bridge keeps the default route so Cloudflare still reaches",
+        "# http://derek:3000, http://vyas:3000, and kali111 on ports 3000 and 3001.",
         "# Re-run the script after changing counts, UBUNTU_IP_START, or BASE_DOMAIN.",
         "# PARENT_IFACE, LAN_SUBNET, and LAN_GATEWAY are still read from .env when Compose starts.",
         "",
@@ -249,6 +358,7 @@ def render_compose(kali: list[str], ubuntu: list[tuple[str, str]]) -> str:
         "    retries: 5",
         "    start_period: 20s",
         "",
+        *lab_host_lines(domain, ubuntu, extra),
         "services:",
     ]
     for name in kali:
@@ -282,7 +392,7 @@ def render_compose(kali: list[str], ubuntu: list[tuple[str, str]]) -> str:
         "    volumes:",
         "      - kali111-config:/config",
         "      - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro",
-        "    networks: [desktop]",
+        *dual_lan(persistent_addr("kali111")),
         "    logging: *json-logs",
         "    healthcheck:",
         '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3001\'"]',
@@ -306,7 +416,7 @@ def render_compose(kali: list[str], ubuntu: list[tuple[str, str]]) -> str:
         "      TITLE: Ubuntu100 desktop",
         "    volumes:",
         "      - /var/lib/cybersecurity/ubuntu100:/config",
-        "    networks: [desktop]",
+        *dual_lan(persistent_addr("ubuntu100")),
         "    logging: *json-logs",
         "    healthcheck:",
         '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3001\'"]',
@@ -330,7 +440,7 @@ def render_compose(kali: list[str], ubuntu: list[tuple[str, str]]) -> str:
         "      TITLE: Ubuntu111 desktop",
         "    volumes:",
         "      - ubuntu111-config:/config",
-        "    networks: [desktop]",
+        *dual_lan(persistent_addr("ubuntu111")),
         "    logging: *json-logs",
         "    healthcheck:",
         '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3001\'"]',
@@ -647,14 +757,22 @@ def main() -> int:
         raise SystemExit(f"UBUNTU_SERVER_IP {server_box} is already used")
     extra = [("ubuntuserver", server_box)]
 
-    write(root / "compose.yaml", render_compose(kali, ubuntu))
+    check_persistent_desktops(subnet, gateway, server, addresses, server_box)
+    desktop_ips = {addr for _name, addr in PERSISTENT_DESKTOPS}
+    if server_box in desktop_ips:
+        raise SystemExit(f"UBUNTU_SERVER_IP {server_box} is a persistent desktop address")
+
+    write(root / "compose.yaml", render_compose(kali, ubuntu, domain, extra))
     write(root / "caddy" / "Caddyfile", render_caddy(kali, ["kali111", "ubuntu100", "ubuntu111"]))
     write(root / "caddy" / "site" / "index.html", render_index(root, domain, user, kali, ubuntu_count))
     write(root / "dns" / "records.conf", render_records(kali, ubuntu, extra))
     write(root / "dns" / "hosts.example", render_hosts(domain, str(server), kali, ubuntu, extra))
     print(
         f"Rendered {kali_count} Kali and {ubuntu_count} Ubuntu from {env_path}. "
-        f"Ubuntu addresses {addresses[0]}-{addresses[-1]}."
+        f"Ubuntu addresses {addresses[0]}-{addresses[-1]}. "
+        "Persistent desktops "
+        + ", ".join(f"{name} {addr}" for name, addr in PERSISTENT_DESKTOPS)
+        + "."
     )
     return 0
 

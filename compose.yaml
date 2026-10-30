@@ -2,6 +2,11 @@
 # Kali desktops: 30. Ubuntu SSH servers: 30.
 # Persistent Mint desktops derek and vyas are not part of the fleet reset.
 # Every service has mem_limit 4g. That is a ceiling, not a reservation.
+# kali01-kali30 stay on the desktop bridge only. They are not on macvlan.
+# Persistent desktops on desktop and macvlan: kali111 10.0.253.50, ubuntu111 10.0.253.51, ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54.
+# extra_hosts on those five maps ubuntuNN to the macvlan address.
+# The desktop bridge keeps the default route so Cloudflare still reaches
+# http://derek:3000, http://vyas:3000, and kali111 on ports 3000 and 3001.
 # Re-run the script after changing counts, UBUNTU_IP_START, or BASE_DOMAIN.
 # PARENT_IFACE, LAN_SUBNET, and LAN_GATEWAY are still read from .env when Compose starts.
 
@@ -57,6 +62,70 @@ x-ubuntu: &ubuntu
     timeout: 5s
     retries: 5
     start_period: 20s
+
+x-lab-hosts: &lab-hosts
+  - "ubuntu01.cybersecurity.lan:10.0.253.11"
+  - "ubuntu01:10.0.253.11"
+  - "ubuntu02.cybersecurity.lan:10.0.253.12"
+  - "ubuntu02:10.0.253.12"
+  - "ubuntu03.cybersecurity.lan:10.0.253.13"
+  - "ubuntu03:10.0.253.13"
+  - "ubuntu04.cybersecurity.lan:10.0.253.14"
+  - "ubuntu04:10.0.253.14"
+  - "ubuntu05.cybersecurity.lan:10.0.253.15"
+  - "ubuntu05:10.0.253.15"
+  - "ubuntu06.cybersecurity.lan:10.0.253.16"
+  - "ubuntu06:10.0.253.16"
+  - "ubuntu07.cybersecurity.lan:10.0.253.17"
+  - "ubuntu07:10.0.253.17"
+  - "ubuntu08.cybersecurity.lan:10.0.253.18"
+  - "ubuntu08:10.0.253.18"
+  - "ubuntu09.cybersecurity.lan:10.0.253.19"
+  - "ubuntu09:10.0.253.19"
+  - "ubuntu10.cybersecurity.lan:10.0.253.20"
+  - "ubuntu10:10.0.253.20"
+  - "ubuntu11.cybersecurity.lan:10.0.253.21"
+  - "ubuntu11:10.0.253.21"
+  - "ubuntu12.cybersecurity.lan:10.0.253.22"
+  - "ubuntu12:10.0.253.22"
+  - "ubuntu13.cybersecurity.lan:10.0.253.23"
+  - "ubuntu13:10.0.253.23"
+  - "ubuntu14.cybersecurity.lan:10.0.253.24"
+  - "ubuntu14:10.0.253.24"
+  - "ubuntu15.cybersecurity.lan:10.0.253.25"
+  - "ubuntu15:10.0.253.25"
+  - "ubuntu16.cybersecurity.lan:10.0.253.26"
+  - "ubuntu16:10.0.253.26"
+  - "ubuntu17.cybersecurity.lan:10.0.253.27"
+  - "ubuntu17:10.0.253.27"
+  - "ubuntu18.cybersecurity.lan:10.0.253.28"
+  - "ubuntu18:10.0.253.28"
+  - "ubuntu19.cybersecurity.lan:10.0.253.29"
+  - "ubuntu19:10.0.253.29"
+  - "ubuntu20.cybersecurity.lan:10.0.253.30"
+  - "ubuntu20:10.0.253.30"
+  - "ubuntu21.cybersecurity.lan:10.0.253.31"
+  - "ubuntu21:10.0.253.31"
+  - "ubuntu22.cybersecurity.lan:10.0.253.32"
+  - "ubuntu22:10.0.253.32"
+  - "ubuntu23.cybersecurity.lan:10.0.253.33"
+  - "ubuntu23:10.0.253.33"
+  - "ubuntu24.cybersecurity.lan:10.0.253.34"
+  - "ubuntu24:10.0.253.34"
+  - "ubuntu25.cybersecurity.lan:10.0.253.35"
+  - "ubuntu25:10.0.253.35"
+  - "ubuntu26.cybersecurity.lan:10.0.253.36"
+  - "ubuntu26:10.0.253.36"
+  - "ubuntu27.cybersecurity.lan:10.0.253.37"
+  - "ubuntu27:10.0.253.37"
+  - "ubuntu28.cybersecurity.lan:10.0.253.38"
+  - "ubuntu28:10.0.253.38"
+  - "ubuntu29.cybersecurity.lan:10.0.253.39"
+  - "ubuntu29:10.0.253.39"
+  - "ubuntu30.cybersecurity.lan:10.0.253.40"
+  - "ubuntu30:10.0.253.40"
+  - "ubuntuserver.cybersecurity.lan:10.0.253.41"
+  - "ubuntuserver:10.0.253.41"
 
 services:
   kali01:
@@ -315,7 +384,12 @@ services:
     volumes:
       - kali111-config:/config
       - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
-    networks: [desktop]
+    extra_hosts: *lab-hosts
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.50
     logging: *json-logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3001'"]
@@ -339,7 +413,12 @@ services:
       TITLE: Ubuntu100 desktop
     volumes:
       - /var/lib/cybersecurity/ubuntu100:/config
-    networks: [desktop]
+    extra_hosts: *lab-hosts
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.52
     logging: *json-logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3001'"]
@@ -363,7 +442,12 @@ services:
       TITLE: Ubuntu111 desktop
     volumes:
       - ubuntu111-config:/config
-    networks: [desktop]
+    extra_hosts: *lab-hosts
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.51
     logging: *json-logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3001'"]
@@ -391,7 +475,12 @@ services:
       - /run
       - /run/lock
       - /tmp
-    networks: [desktop]
+    extra_hosts: *lab-hosts
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.53
     logging: *json-logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
@@ -419,7 +508,12 @@ services:
       - /run
       - /run/lock
       - /tmp
-    networks: [desktop]
+    extra_hosts: *lab-hosts
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.54
     logging: *json-logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
