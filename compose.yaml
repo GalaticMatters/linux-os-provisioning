@@ -377,7 +377,6 @@ services:
     mem_limit: 4g
     shm_size: "1gb"
     privileged: true
-    cgroup: host
     restart: unless-stopped
     stop_grace_period: 30s
     environment:
@@ -388,7 +387,6 @@ services:
     volumes:
       - derek-config:/home/${DEREK_USER:-derek}
       - ./mint/entrypoint.sh:/mint-entrypoint.sh:ro
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
     tmpfs:
       - /run
       - /run/lock
@@ -407,7 +405,6 @@ services:
     mem_limit: 4g
     shm_size: "1gb"
     privileged: true
-    cgroup: host
     restart: unless-stopped
     stop_grace_period: 30s
     environment:
@@ -418,7 +415,6 @@ services:
     volumes:
       - vyas-config:/home/${VYAS_USER:-vyas}
       - ./mint/entrypoint.sh:/mint-entrypoint.sh:ro
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
     tmpfs:
       - /run
       - /run/lock

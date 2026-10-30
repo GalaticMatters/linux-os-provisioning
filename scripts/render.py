@@ -150,6 +150,9 @@ def render_mint(name: str) -> list[str]:
 
     derek uses DEREK_USER / DEREK_PASSWORD. vyas uses VYAS_USER / VYAS_PASSWORD.
     The browser origin is http://<name>:3000. RDP is not the public path.
+    privileged stays so systemd can start the session. No cgroup: host
+    and no host /sys/fs/cgroup mount: that namespace exits this container
+    when another container stops.
     """
     key = name.upper()
     return [
@@ -158,7 +161,6 @@ def render_mint(name: str) -> list[str]:
         "    mem_limit: 4g",
         '    shm_size: "1gb"',
         "    privileged: true",
-        "    cgroup: host",
         "    restart: unless-stopped",
         "    stop_grace_period: 30s",
         "    environment:",
@@ -169,7 +171,6 @@ def render_mint(name: str) -> list[str]:
         "    volumes:",
         f"      - {name}-config:/home/${{{key}_USER:-{name}}}",
         "      - ./mint/entrypoint.sh:/mint-entrypoint.sh:ro",
-        "      - /sys/fs/cgroup:/sys/fs/cgroup:rw",
         "    tmpfs:",
         "      - /run",
         "      - /run/lock",

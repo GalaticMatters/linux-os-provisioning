@@ -60,7 +60,7 @@ Start DNS once. `dns-on` starts only dnsmasq. `on` starts the fleet, Caddy, the 
 ./scripts/lab.sh on
 ```
 
-`off` stops the resettable fleet and the other non-persistent services: kali01–kali30, ubuntu01–ubuntu30, Caddy, the scheduler, ubuntu100, ubuntuserver, and cloudflared when the public profile is in use. It does not stop dnsmasq, derek, vyas, kali111, or ubuntu111, so names such as `cybersecurity.lan` still resolve and those four desktops keep running. `./scripts/lab.sh dns-off` stops only dnsmasq.
+`off` stops the resettable fleet and the other non-persistent services: kali01–kali30, ubuntu01–ubuntu30, Caddy, the scheduler, ubuntu100, ubuntuserver, and cloudflared when the public profile is in use. It does that by resolving container IDs with `docker compose ps -aq` for only those services, then `docker stop` on those IDs. It does not pass a service list to `docker compose stop`. dnsmasq, derek, vyas, kali111, and ubuntu111 are not in that ID list, so names such as `cybersecurity.lan` still resolve and those four desktops keep running. `./scripts/lab.sh dns-off` stops only dnsmasq.
 
 To stop the four desktops that `off` leaves running:
 
@@ -77,7 +77,7 @@ When names are down, use the console or `10.0.253.1`, then:
 ./scripts/lab.sh on
 ```
 
-`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, so `up -d` does not start dnsmasq. `off` keeps dnsmasq running by stopping the service list with dnsmasq, derek, vyas, kali111, and ubuntu111 removed. `extra-containers-off` names only those four desktops. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
+`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, so `up -d` does not start dnsmasq. `off` keeps dnsmasq running by stopping container IDs for every service except dnsmasq, derek, vyas, kali111, and ubuntu111. `extra-containers-off` names only those four desktops. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
 
 The first start pulls the Kali image (about 4.8 GB). Watch `docker compose ps` and `docker compose logs -f caddy`. Then install the CA and open <https://cybersecurity.lan>.
 
@@ -120,7 +120,7 @@ docker compose up -d --force-recreate --no-deps derek vyas
 
 `docker compose up -d --force-recreate --no-deps derek vyas` recreates only those two containers so they pick up the account and the home mount. The named volumes stay. This is not the 02:00 fleet reset. `lab.sh on` also starts them with the rest of the lab. `lab.sh off` leaves derek and vyas running (and kali111 and ubuntu111). `lab.sh extra-containers-off` stops only derek, vyas, kali111, and ubuntu111. It does not stop dnsmasq or the fleet. If `CLOUDFLARE_TUNNEL_TOKEN` is set, `lab.sh on` starts the existing `cloudflared`. It does not start or stop dnsmasq. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
 
-The containers run systemd so Cinnamon and the HTTP desktop can start. They stay on the `desktop` network. The first start installs noVNC, so it takes longer than a later start.
+The containers run systemd so Cinnamon and the HTTP desktop can start. They stay privileged because systemd needs that to bring the session up. They do not set `cgroup: host` and they do not mount the host `/sys/fs/cgroup`. A host cgroup namespace makes the container exit when another container stops. They stay on the `desktop` network. The first start installs noVNC, so it takes longer than a later start. The next `./scripts/lab.sh on` recreates derek and vyas once so the running containers drop the host cgroup namespace. After that, `off` leaves them running.
 
 ## SSH
 

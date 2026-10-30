@@ -3,9 +3,10 @@ set -eu
 cd "$(dirname "$0")/.."
 
 # .env sets COMPOSE_PROFILES=dns. Clear it so `on` (`up -d`) does not
-# start dnsmasq. `off` still names services and drops dnsmasq plus
-# derek, vyas, kali111, and ubuntu111: a bare `docker compose stop`
-# stops every running container in the project. `extra-containers-off`
+# start dnsmasq. `off` resolves container IDs for every other service
+# and `docker stop`s those IDs. It does not call `docker compose stop`:
+# a long service list still stops vyas. dnsmasq, derek, vyas, kali111,
+# and ubuntu111 are never in that ID list. `extra-containers-off`
 # stops only those four desktops.
 export COMPOSE_PROFILES=""
 
@@ -31,8 +32,25 @@ case "${1:-}" in
     if [ -z "$services" ]; then
       exit 0
     fi
+    # IDs only. Do not pass the service list to `docker compose stop`.
     # shellcheck disable=SC2086
-    exec docker compose $profiles stop $services
+    ids=$(docker compose $profiles ps -aq $services)
+    if [ -z "$ids" ]; then
+      exit 0
+    fi
+    kept=""
+    for id in $ids; do
+      svc=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}}' "$id" 2>/dev/null || true)
+      case "$svc" in
+        ""|dnsmasq|derek|vyas|kali111|ubuntu111) continue ;;
+      esac
+      kept="${kept} ${id}"
+    done
+    if [ -z "$kept" ]; then
+      exit 0
+    fi
+    # shellcheck disable=SC2086
+    exec docker stop $kept
     ;;
   extra-containers-off)
     exec docker compose stop derek vyas kali111 ubuntu111
