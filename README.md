@@ -39,25 +39,27 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `ssh van@ubuntuserver.cybersecurity.lan` | `10.0.253.41` | Same image as ubuntu01–ubuntu30. Not part of `lab.sh on`/`off`, and not recreated at 02:00. |
 | `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000`, macvlan `10.0.253.53` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000`, macvlan `10.0.253.54` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
-| `https://kali111.research101.stream` | Cloudflare HTTP `http://kali111:3000` | Persistent Kali on the `desktop` bridge, same network as cloudflared and ubuntu111. |
+| `https://kali111.research101.stream` | Cloudflare HTTP `http://kali111:3000`, macvlan `10.0.253.50` | Persistent Kali on the `desktop` bridge, same network as cloudflared. Also on the macvlan, so it can ping `10.0.253.11`. |
 | `ssh ssh.research101.stream` | Cloudflare SSH `ssh://host.docker.internal:22` | The ProLiant sshd. Same machine as `10.0.253.1`, without signing in to kali111 first. |
-| `https://ubuntu111.research101.stream` | Cloudflare HTTP `http://ubuntu111:3000` | Persistent Ubuntu desktop on that same bridge. SSH is `ssh van@ubuntu111` on port 22, same password as the web login. |
+| `https://ubuntu111.research101.stream` | Cloudflare HTTP `http://ubuntu111:3000`, macvlan `10.0.253.51` | Persistent Ubuntu desktop on that same bridge, and on the macvlan. SSH is `ssh van@ubuntu111` on port 22, same password as the web login. |
 | ubuntu100 | macvlan `10.0.253.52`, still `ubuntu100` on the `desktop` bridge | Persistent Ubuntu desktop on the 500 GB disk. Same reachability. |
 
 Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. Browsers stay on Caddy. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the Kali container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
 
-Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10.0.253.55` for kali01 through `10.0.253.84` for kali30. kali111 and ubuntu111 stay on that bridge with cloudflared, so the tunnel opens `http://kali111:3000` and `http://ubuntu111:3000`. Ping and SSH to `ubuntu01.cybersecurity.lan` work from kali01–kali30 and from ubuntu100, derek, or vyas.
+Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10.0.253.55` for kali01 through `10.0.253.84` for kali30. kali111 (`10.0.253.50`) and ubuntu111 (`10.0.253.51`) stay on that bridge with cloudflared and are also on the macvlan, so the tunnel opens `http://kali111:3000` and `http://ubuntu111:3000`. The desktop bridge keeps the default route. Ping and SSH to `ubuntu01.cybersecurity.lan` (`10.0.253.11`) use the macvlan, from kali01–kali30, kali111, ubuntu111, ubuntu100, derek, or vyas.
 
 ## Lab interface
 
-kali01 and ubuntu01 share a private bridge, as do kali02 and ubuntu02, through kali30 and ubuntu30. kali111 and ubuntu111 share one too. Inside every one of those containers the extra interface is named `veth-peer`. Nothing in the image assigns a lab address or starts DHCP. Docker gives `veth-peer` an address on that pair's subnet when the container starts: `10.201.1.0/24` for pair 01, `10.201.2.0/24` for pair 02, through `10.201.30.0/24`, and `10.201.111.0/24` for kali111 and ubuntu111. `10.201.N.1` is the bridge on the ProLiant. The desktop bridge and the macvlan stay the path for Caddy, Cloudflare, and `10.0.253.0/24`. ubuntuserver, ubuntu100, derek, and vyas do not have this interface.
+`veth-peer` is a second cable inside kali01–kali30, ubuntu01–ubuntu30, kali111, and ubuntu111. It has no address and no default route. kali01 and ubuntu01 share one bridge, through kali30 and ubuntu30, and kali111 shares one with ubuntu111. It is not the path to `10.0.253.11`. ubuntuserver, ubuntu100, derek, and vyas do not have it.
 
-Docker also installs a default route via `10.201.N.1`. That sends replies into the lab bridge, so ping and SSH to `ubuntu01` (`10.0.253.11`) stop. At start the container deletes only that default route. Ubuntu servers go back to `LAN_GATEWAY` on the macvlan. Kali desktops go back to the `desktop` bridge. `veth-peer` stays up for the lab.
+A Docker network on that interface was sending `ubuntu01`'s replies away from the macvlan, so ping and SSH to `10.0.253.11` stopped. That Docker network is gone.
 
-`NET_ADMIN` is set on those containers so a lab can change the address. After `git pull`:
+The ProLiant's own address `10.0.253.1` cannot reach a macvlan child. `sudo ./scripts/lab-veth.sh` adds a shim, `cybersecurity-shim`, at `10.0.253.100`, and then `ping 10.0.253.11` from this server uses the shim. After `git pull`:
 
 ```sh
 docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'kali%02d ubuntu%02d ' "$n"; done) kali111 ubuntu111
+sudo ./scripts/lab-veth.sh
+ping -c 2 10.0.253.11
 ```
 
 All 30 Kali containers share one image, `lscr.io/linuxserver/kali-linux:latest`. There is one copy of that image on disk.
@@ -232,15 +234,15 @@ Persistent desktops, same idea, different addresses:
 
 | Desktop | Macvlan address | Still reachable on `desktop` as |
 | --- | --- | --- |
-| kali111 | none | `http://kali111:3000` on the `desktop` bridge |
-| ubuntu111 | none | `http://ubuntu111:3000` on the `desktop` bridge |
+| kali111 | `10.0.253.50` | `http://kali111:3000` on the `desktop` bridge |
+| ubuntu111 | `10.0.253.51` | `http://ubuntu111:3000` on the `desktop` bridge |
 | ubuntu100 | `10.0.253.52` | `ubuntu100` |
 | derek | `10.0.253.53` | `http://derek:3000` |
 | vyas | `10.0.253.54` | `http://vyas:3000` |
 
 Those addresses are not `10.0.253.1`, not the gateway `10.0.253.254`, not `10.0.253.2`–`10.0.253.10`, and not `10.0.253.11`–`10.0.253.41`. The bridge keeps the default route (`gw_priority`), so Cloudflare opens `http://derek:3000`, `http://vyas:3000`, `http://kali111:3000`, and `http://ubuntu111:3000`. Caddy still opens `https://kali111:3001` for the `.cybersecurity.lan` name.
 
-A macvlan interface does not deliver packets to the parent address `10.0.253.1`, so the macvlan desktops do not send DNS to dnsmasq there. kali111 and ubuntu111 are not on macvlan. They share the `desktop` bridge with cloudflared. kali111 still adds a route for `SERVER_IP` via that bridge, so `ssh` to `10.0.253.1` reaches sshd on the ProLiant. Recreate them after pulling: `docker compose up -d --force-recreate --no-deps kali111 ubuntu111`. Compose writes the Ubuntu server records into each desktop’s hosts file (`extra_hosts`). `ubuntu01` and `ubuntu01.cybersecurity.lan` both resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40` and `ubuntuserver` at `10.0.253.41`. The same addresses are in `dns/records.conf`.
+A macvlan interface does not deliver packets to the parent address `10.0.253.1`, so the macvlan desktops do not send DNS to dnsmasq there. kali111 and ubuntu111 are on the macvlan and on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route (`gw_priority`), so Cloudflare still opens `http://kali111:3000` and `http://ubuntu111:3000`. kali111 still adds a route for `SERVER_IP` via that bridge, so `ssh` to `10.0.253.1` reaches sshd on the ProLiant. Recreate them after pulling: `docker compose up -d --force-recreate --no-deps kali111 ubuntu111`. Compose writes the Ubuntu server records into each desktop’s hosts file (`extra_hosts`). `ubuntu01` and `ubuntu01.cybersecurity.lan` both resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40` and `ubuntuserver` at `10.0.253.41`. The same addresses are in `dns/records.conf`.
 
 From a terminal on kali111, ubuntu111, ubuntu100, derek, or vyas:
 
@@ -446,7 +448,7 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **Page loads, black screen.** The browser is not on HTTPS, or something is stripping WebSocket upgrades. Caddy forwards them.
 - **Reset did not run.** `docker compose logs scheduler` should show the timezone at start and a `reset:` line after 02:00. `docker compose exec scheduler date` should match `TZ`.
 - **502 Bad gateway on derek or vyas.** Cloudflare reached the tunnel and nothing accepted HTTP on port 3000. `docker compose logs derek` should include `Mint login on http://0.0.0.0:3000` before apt finishes. `ERROR: apt-get update failed` or `ERROR: apt-get install failed` means packages did not install; the login page stays up. Origins stay `http://derek:3000` and `http://vyas:3000`.
-- **502 on ubuntu111.research101.stream or kali111.research101.stream.** The tunnel origin is HTTP `http://ubuntu111:3000` or `http://kali111:3000`. Both containers are only on the `desktop` bridge, with cloudflared. After `git pull`, `docker compose up -d --force-recreate --no-deps kali111 ubuntu111`.
+- **502 on ubuntu111.research101.stream or kali111.research101.stream.** The tunnel origin is HTTP `http://ubuntu111:3000` or `http://kali111:3000`. Both containers are on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route. After `git pull`, `docker compose up -d --force-recreate --no-deps kali111 ubuntu111`.
 - **derek or vyas is a blank page.** The public hostname must be service type HTTP, origin `http://derek:3000` or `http://vyas:3000`. RDP does not render in a browser. Replace an RDP route.
 - **The Mint login is rejected.** `DEREK_PASSWORD` or `VYAS_PASSWORD` is empty, or the container was not recreated after the password changed. The entrypoint resets the password from `.env` on start. The same password is used for `sudo` after Cinnamon starts.
 - **Sign-in says the desktop did not start.** A correct password installs `tigervnc-standalone-server` (Xtigervnc) and `util-linux` (runuser) if apt has not finished. Port 3000 stays open during that install. `docker compose logs derek` should then contain `Xtigervnc and runuser are ready` and `Cinnamon started for derek` (`Cinnamon started for vyas` on that desktop).

@@ -4,13 +4,12 @@
 # Every service has mem_limit 4g. That is a ceiling, not a reservation.
 # kali01 is 10.0.253.55 and kali30 is 10.0.253.84 on desktop and macvlan.
 # Caddy still reaches each kaliNN by container name on the desktop bridge.
-# Persistent desktops on desktop and macvlan: ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54.
-# kali111 and ubuntu111 stay on the desktop bridge with cloudflared.
+# Persistent desktops on desktop and macvlan: kali111 10.0.253.50, ubuntu111 10.0.253.51, ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54.
+# kali111 and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.
 # extra_hosts maps ubuntuNN to the macvlan address on the Kali fleet and those five.
 # The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.
-# Each pair also has a private lab bridge. Inside the container that NIC
-# is veth-peer. No lab address or DHCP service is configured.
-# lab01 is 10.201.1.0/24. lab111 is 10.201.111.0/24. Cloudflare still opens
+# veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.
+# Cloudflare still opens
 # http://kali111:3000 and http://ubuntu111:3000. derek and vyas stay
 # http://derek:3000 and http://vyas:3000.
 # cloudflared reaches the ProLiant sshd as host.docker.internal:22.
@@ -104,7 +103,6 @@ x-kali: &kali
   tmpfs:
     - /config:rw,nosuid,nodev,size=${DESKTOP_TMPFS_SIZE:-2g},mode=1777
   volumes:
-    - ./lab/keep-default-route.sh:/custom-cont-init.d/01-keep-default-route:ro
     - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
   labels:
     fleet.reset: "true"
@@ -130,9 +128,6 @@ x-ubuntu: &ubuntu
     SSH_PUBLIC_KEY: "${SSH_PUBLIC_KEY:-}"
     SSH_PASSWORD: "${SSH_PASSWORD:-}"
     TZ: ${TZ:-UTC}
-    LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.254}
-  volumes:
-    - ./lab/keep-default-route.sh:/usr/local/bin/keep-default-route.sh:ro
   labels:
     fleet.reset: "true"
   logging: *json-logs
@@ -152,9 +147,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.55
-      lab01:
-        interface_name: veth-peer
-        gw_priority: 0
   kali02:
     hostname: kali02
     <<: *kali
@@ -163,9 +155,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.56
-      lab02:
-        interface_name: veth-peer
-        gw_priority: 0
   kali03:
     hostname: kali03
     <<: *kali
@@ -174,9 +163,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.57
-      lab03:
-        interface_name: veth-peer
-        gw_priority: 0
   kali04:
     hostname: kali04
     <<: *kali
@@ -185,9 +171,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.58
-      lab04:
-        interface_name: veth-peer
-        gw_priority: 0
   kali05:
     hostname: kali05
     <<: *kali
@@ -196,9 +179,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.59
-      lab05:
-        interface_name: veth-peer
-        gw_priority: 0
   kali06:
     hostname: kali06
     <<: *kali
@@ -207,9 +187,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.60
-      lab06:
-        interface_name: veth-peer
-        gw_priority: 0
   kali07:
     hostname: kali07
     <<: *kali
@@ -218,9 +195,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.61
-      lab07:
-        interface_name: veth-peer
-        gw_priority: 0
   kali08:
     hostname: kali08
     <<: *kali
@@ -229,9 +203,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.62
-      lab08:
-        interface_name: veth-peer
-        gw_priority: 0
   kali09:
     hostname: kali09
     <<: *kali
@@ -240,9 +211,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.63
-      lab09:
-        interface_name: veth-peer
-        gw_priority: 0
   kali10:
     hostname: kali10
     <<: *kali
@@ -251,9 +219,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.64
-      lab10:
-        interface_name: veth-peer
-        gw_priority: 0
   kali11:
     hostname: kali11
     <<: *kali
@@ -262,9 +227,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.65
-      lab11:
-        interface_name: veth-peer
-        gw_priority: 0
   kali12:
     hostname: kali12
     <<: *kali
@@ -273,9 +235,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.66
-      lab12:
-        interface_name: veth-peer
-        gw_priority: 0
   kali13:
     hostname: kali13
     <<: *kali
@@ -284,9 +243,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.67
-      lab13:
-        interface_name: veth-peer
-        gw_priority: 0
   kali14:
     hostname: kali14
     <<: *kali
@@ -295,9 +251,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.68
-      lab14:
-        interface_name: veth-peer
-        gw_priority: 0
   kali15:
     hostname: kali15
     <<: *kali
@@ -306,9 +259,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.69
-      lab15:
-        interface_name: veth-peer
-        gw_priority: 0
   kali16:
     hostname: kali16
     <<: *kali
@@ -317,9 +267,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.70
-      lab16:
-        interface_name: veth-peer
-        gw_priority: 0
   kali17:
     hostname: kali17
     <<: *kali
@@ -328,9 +275,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.71
-      lab17:
-        interface_name: veth-peer
-        gw_priority: 0
   kali18:
     hostname: kali18
     <<: *kali
@@ -339,9 +283,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.72
-      lab18:
-        interface_name: veth-peer
-        gw_priority: 0
   kali19:
     hostname: kali19
     <<: *kali
@@ -350,9 +291,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.73
-      lab19:
-        interface_name: veth-peer
-        gw_priority: 0
   kali20:
     hostname: kali20
     <<: *kali
@@ -361,9 +299,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.74
-      lab20:
-        interface_name: veth-peer
-        gw_priority: 0
   kali21:
     hostname: kali21
     <<: *kali
@@ -372,9 +307,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.75
-      lab21:
-        interface_name: veth-peer
-        gw_priority: 0
   kali22:
     hostname: kali22
     <<: *kali
@@ -383,9 +315,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.76
-      lab22:
-        interface_name: veth-peer
-        gw_priority: 0
   kali23:
     hostname: kali23
     <<: *kali
@@ -394,9 +323,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.77
-      lab23:
-        interface_name: veth-peer
-        gw_priority: 0
   kali24:
     hostname: kali24
     <<: *kali
@@ -405,9 +331,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.78
-      lab24:
-        interface_name: veth-peer
-        gw_priority: 0
   kali25:
     hostname: kali25
     <<: *kali
@@ -416,9 +339,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.79
-      lab25:
-        interface_name: veth-peer
-        gw_priority: 0
   kali26:
     hostname: kali26
     <<: *kali
@@ -427,9 +347,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.80
-      lab26:
-        interface_name: veth-peer
-        gw_priority: 0
   kali27:
     hostname: kali27
     <<: *kali
@@ -438,9 +355,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.81
-      lab27:
-        interface_name: veth-peer
-        gw_priority: 0
   kali28:
     hostname: kali28
     <<: *kali
@@ -449,9 +363,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.82
-      lab28:
-        interface_name: veth-peer
-        gw_priority: 0
   kali29:
     hostname: kali29
     <<: *kali
@@ -460,9 +371,6 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.83
-      lab29:
-        interface_name: veth-peer
-        gw_priority: 0
   kali30:
     hostname: kali30
     <<: *kali
@@ -471,309 +379,186 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.84
-      lab30:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu01:
     hostname: ubuntu01
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.11
-      lab01:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu02:
     hostname: ubuntu02
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.12
-      lab02:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu03:
     hostname: ubuntu03
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.13
-      lab03:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu04:
     hostname: ubuntu04
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.14
-      lab04:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu05:
     hostname: ubuntu05
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.15
-      lab05:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu06:
     hostname: ubuntu06
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.16
-      lab06:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu07:
     hostname: ubuntu07
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.17
-      lab07:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu08:
     hostname: ubuntu08
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.18
-      lab08:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu09:
     hostname: ubuntu09
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.19
-      lab09:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu10:
     hostname: ubuntu10
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.20
-      lab10:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu11:
     hostname: ubuntu11
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.21
-      lab11:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu12:
     hostname: ubuntu12
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.22
-      lab12:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu13:
     hostname: ubuntu13
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.23
-      lab13:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu14:
     hostname: ubuntu14
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.24
-      lab14:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu15:
     hostname: ubuntu15
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.25
-      lab15:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu16:
     hostname: ubuntu16
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.26
-      lab16:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu17:
     hostname: ubuntu17
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.27
-      lab17:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu18:
     hostname: ubuntu18
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.28
-      lab18:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu19:
     hostname: ubuntu19
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.29
-      lab19:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu20:
     hostname: ubuntu20
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.30
-      lab20:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu21:
     hostname: ubuntu21
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.31
-      lab21:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu22:
     hostname: ubuntu22
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.32
-      lab22:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu23:
     hostname: ubuntu23
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.33
-      lab23:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu24:
     hostname: ubuntu24
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.34
-      lab24:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu25:
     hostname: ubuntu25
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.35
-      lab25:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu26:
     hostname: ubuntu26
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.36
-      lab26:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu27:
     hostname: ubuntu27
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.37
-      lab27:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu28:
     hostname: ubuntu28
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.38
-      lab28:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu29:
     hostname: ubuntu29
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.39
-      lab29:
-        interface_name: veth-peer
-        gw_priority: 0
   ubuntu30:
     hostname: ubuntu30
     <<: *ubuntu
     networks:
       lan:
-        gw_priority: 100
         ipv4_address: 10.0.253.40
-      lab30:
-        interface_name: veth-peer
-        gw_priority: 0
   kali111:
     hostname: kali111
     image: lscr.io/linuxserver/kali-linux:latest
@@ -793,16 +578,14 @@ services:
       TITLE: Kali111
     volumes:
       - kali111-config:/config
-      - ./lab/keep-default-route.sh:/custom-cont-init.d/01-keep-default-route:ro
       - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
     extra_hosts: *lab-hosts
     networks:
       desktop:
         gw_priority: 100
-      lab111:
-        interface_name: veth-peer
-        gw_priority: 0
+      lan:
+        ipv4_address: 10.0.253.50
     logging: *json-logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
@@ -859,16 +642,14 @@ services:
       TITLE: Ubuntu111 desktop
     volumes:
       - ubuntu111-config:/config
-      - ./lab/keep-default-route.sh:/custom-cont-init.d/01-keep-default-route:ro
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
       - ./ubuntu/custom-services.d/sshd:/custom-services.d/sshd:ro
     extra_hosts: *lab-hosts
     networks:
       desktop:
         gw_priority: 100
-      lab111:
-        interface_name: veth-peer
-        gw_priority: 0
+      lan:
+        ipv4_address: 10.0.253.51
     logging: *json-logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
@@ -1085,254 +866,6 @@ networks:
       config:
         - subnet: ${LAN_SUBNET:?Set LAN_SUBNET}
           gateway: ${LAN_GATEWAY:?Set LAN_GATEWAY}
-  lab01:
-    name: cybersecurity-lab01
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.1.0/24
-          gateway: 10.201.1.1
-  lab02:
-    name: cybersecurity-lab02
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.2.0/24
-          gateway: 10.201.2.1
-  lab03:
-    name: cybersecurity-lab03
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.3.0/24
-          gateway: 10.201.3.1
-  lab04:
-    name: cybersecurity-lab04
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.4.0/24
-          gateway: 10.201.4.1
-  lab05:
-    name: cybersecurity-lab05
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.5.0/24
-          gateway: 10.201.5.1
-  lab06:
-    name: cybersecurity-lab06
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.6.0/24
-          gateway: 10.201.6.1
-  lab07:
-    name: cybersecurity-lab07
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.7.0/24
-          gateway: 10.201.7.1
-  lab08:
-    name: cybersecurity-lab08
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.8.0/24
-          gateway: 10.201.8.1
-  lab09:
-    name: cybersecurity-lab09
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.9.0/24
-          gateway: 10.201.9.1
-  lab10:
-    name: cybersecurity-lab10
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.10.0/24
-          gateway: 10.201.10.1
-  lab11:
-    name: cybersecurity-lab11
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.11.0/24
-          gateway: 10.201.11.1
-  lab12:
-    name: cybersecurity-lab12
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.12.0/24
-          gateway: 10.201.12.1
-  lab13:
-    name: cybersecurity-lab13
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.13.0/24
-          gateway: 10.201.13.1
-  lab14:
-    name: cybersecurity-lab14
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.14.0/24
-          gateway: 10.201.14.1
-  lab15:
-    name: cybersecurity-lab15
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.15.0/24
-          gateway: 10.201.15.1
-  lab16:
-    name: cybersecurity-lab16
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.16.0/24
-          gateway: 10.201.16.1
-  lab17:
-    name: cybersecurity-lab17
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.17.0/24
-          gateway: 10.201.17.1
-  lab18:
-    name: cybersecurity-lab18
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.18.0/24
-          gateway: 10.201.18.1
-  lab19:
-    name: cybersecurity-lab19
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.19.0/24
-          gateway: 10.201.19.1
-  lab20:
-    name: cybersecurity-lab20
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.20.0/24
-          gateway: 10.201.20.1
-  lab21:
-    name: cybersecurity-lab21
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.21.0/24
-          gateway: 10.201.21.1
-  lab22:
-    name: cybersecurity-lab22
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.22.0/24
-          gateway: 10.201.22.1
-  lab23:
-    name: cybersecurity-lab23
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.23.0/24
-          gateway: 10.201.23.1
-  lab24:
-    name: cybersecurity-lab24
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.24.0/24
-          gateway: 10.201.24.1
-  lab25:
-    name: cybersecurity-lab25
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.25.0/24
-          gateway: 10.201.25.1
-  lab26:
-    name: cybersecurity-lab26
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.26.0/24
-          gateway: 10.201.26.1
-  lab27:
-    name: cybersecurity-lab27
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.27.0/24
-          gateway: 10.201.27.1
-  lab28:
-    name: cybersecurity-lab28
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.28.0/24
-          gateway: 10.201.28.1
-  lab29:
-    name: cybersecurity-lab29
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.29.0/24
-          gateway: 10.201.29.1
-  lab30:
-    name: cybersecurity-lab30
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.30.0/24
-          gateway: 10.201.30.1
-  lab111:
-    name: cybersecurity-lab111
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 10.201.111.0/24
-          gateway: 10.201.111.1
 
 volumes:
   caddy-data:

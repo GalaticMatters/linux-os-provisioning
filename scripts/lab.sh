@@ -23,7 +23,8 @@ done
 case "${1:-}" in
   on)
     # shellcheck disable=SC2086
-    exec docker compose up -d $fleet
+    docker compose up -d $fleet
+    ./scripts/lab-veth.sh || echo "veth-peer was not added. Run: sudo ./scripts/lab-veth.sh" >&2
     ;;
   off)
     # shellcheck disable=SC2086
@@ -35,7 +36,8 @@ case "${1:-}" in
     exec docker stop $ids
     ;;
   extra-containers-on)
-    exec docker compose up -d derek vyas kali111 ubuntu111
+    docker compose up -d derek vyas kali111 ubuntu111
+    ./scripts/lab-veth.sh || echo "veth-peer was not added. Run: sudo ./scripts/lab-veth.sh" >&2
     ;;
   extra-containers-off)
     exec docker compose stop derek vyas kali111 ubuntu111
@@ -50,7 +52,8 @@ case "${1:-}" in
     # One build of the shared image, then recreate ubuntu01–ubuntu30 and ubuntuserver.
     docker compose build ubuntu01
     # shellcheck disable=SC2086
-    exec docker compose up -d --force-recreate --no-deps $ubuntu ubuntuserver
+    docker compose up -d --force-recreate --no-deps $ubuntu ubuntuserver
+    ./scripts/lab-veth.sh || echo "veth-peer was not added. Run: sudo ./scripts/lab-veth.sh" >&2
     ;;
   *)
     echo "usage: $0 on|off|extra-containers-on|extra-containers-off|dns-on|dns-off|rebuild" >&2
