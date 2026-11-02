@@ -1,59 +1,23 @@
 #!/usr/bin/with-contenv bash
-# This desktop has two NICs. The compose bridge is how Caddy and the other
-# desktops reach it. The macvlan NIC is how it reaches the Ubuntu LAN.
-# A reply has to leave on the NIC that owns the address the peer used, or the
-# other side never sees it (kali111 cannot reach ubuntu111, and Cloudflare
-# gets a bad gateway).
-# SERVER_IP is on the macvlan parent, so frames aimed at it on that NIC never
-# arrive. A /32 via the bridge gateway delivers SSH to the ProLiant.
-set +e
-
+# SERVER_IP (10.0.253.1) is on the macvlan parent. Frames sent to that address
+# out the macvlan NIC never reach the host. A /32 via the compose bridge
+# delivers SSH to sshd on the ProLiant.
+# Do not add ip rules here. Policy routing stopped Caddy reaching this desktop,
+# and the browser showed a bad gateway.
+set -eu
+host="${SERVER_IP:-}"
+if [ -z "$host" ]; then
+  echo "SERVER_IP is unset; not adding a host route" >&2
+  exit 0
+fi
 if ! command -v ip >/dev/null 2>&1; then
   apt-get update
   apt-get install -y --no-install-recommends iproute2
 fi
-
-sysctl -w net.ipv4.conf.all.rp_filter=0 >/dev/null 2>&1
-sysctl -w net.ipv4.conf.default.rp_filter=0 >/dev/null 2>&1
-
-host="${SERVER_IP:-}"
-bridge_gw=""
-bridge_dev=""
-while read -r via dev; do
-  if [ -n "$host" ] && [ "$via" = "$host" ]; then
-    continue
-  fi
-  bridge_gw=$via
-  bridge_dev=$dev
-  break
-done < <(ip -4 route show default | awk '{print $3, $5}')
-
-if [ -n "$host" ] && [ -n "$bridge_gw" ]; then
-  ip route replace "${host}/32" via "$bridge_gw"
-  echo "route ${host}/32 via ${bridge_gw}"
+gw=$(ip -4 route show default | awk -v host="$host" '$3 != host {print $3; exit}')
+if [ -z "$gw" ]; then
+  echo "no bridge gateway; not routing $host" >&2
+  exit 0
 fi
-
-table=100
-ip -4 -o addr show scope global | awk '{print $2, $4}' | while read -r dev cidr; do
-  ipaddr=${cidr%%/*}
-  [ -n "$ipaddr" ] || continue
-  link=$(ip -4 route show dev "$dev" scope link | awk '{print $1; exit}')
-  ip route flush table "$table" >/dev/null 2>&1
-  if [ -n "$link" ]; then
-    ip route replace "$link" dev "$dev" table "$table"
-  fi
-  if [ "$dev" = "$bridge_dev" ] && [ -n "$bridge_gw" ]; then
-    ip route replace default via "$bridge_gw" dev "$dev" table "$table"
-  else
-    via=$(ip -4 route show dev "$dev" | awk '$1=="default" {print $3; exit}')
-    if [ -n "$via" ]; then
-      ip route replace default via "$via" dev "$dev" table "$table"
-    fi
-  fi
-  while ip rule del from "$ipaddr" table "$table" >/dev/null 2>&1; do
-    :
-  done
-  ip rule add from "$ipaddr" lookup "$table" priority "$table"
-  echo "policy from ${ipaddr} dev ${dev} table ${table}"
-  table=$((table + 1))
-done
+ip route replace "${host}/32" via "$gw"
+echo "route ${host}/32 via ${gw}"
