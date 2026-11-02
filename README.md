@@ -40,7 +40,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000`, macvlan `10.0.253.53` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000`, macvlan `10.0.253.54` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | kali111 | macvlan `10.0.253.50`, still `kali111` on the `desktop` bridge | Persistent Kali. Ping and SSH to the Ubuntu fleet from this desktop. |
-| `https://ubuntu111.research101.stream` | Cloudflare HTTP `http://caddy:80`, macvlan `10.0.253.51` | Persistent Ubuntu desktop. Caddy opens `https://ubuntu111:3001`. |
+| `https://ubuntu111.research101.stream` | Cloudflare HTTP `http://caddy:80`, macvlan `10.0.253.51` | Persistent Ubuntu desktop. Caddy opens `http://ubuntu111:3000`. |
 | ubuntu100 | macvlan `10.0.253.52`, still `ubuntu100` on the `desktop` bridge | Persistent Ubuntu desktop on the 500 GB disk. Same reachability. |
 
 Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. Browsers stay on Caddy. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the Kali container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
@@ -191,12 +191,12 @@ Persistent desktops, same idea, different addresses:
 | Desktop | Macvlan address | Still reachable on `desktop` as |
 | --- | --- | --- |
 | kali111 | `10.0.253.50` | `kali111` (ports 3000 and 3001) |
-| ubuntu111 | `10.0.253.51` | `https://ubuntu111:3001` from Caddy. The public name is `http://caddy:80` with host `ubuntu111.research101.stream`. |
+| ubuntu111 | `10.0.253.51` | Public name: Caddy opens `http://ubuntu111:3000`. LAN name: Caddy opens `https://ubuntu111:3001`. |
 | ubuntu100 | `10.0.253.52` | `ubuntu100` |
 | derek | `10.0.253.53` | `http://derek:3000` |
 | vyas | `10.0.253.54` | `http://vyas:3000` |
 
-Those addresses are not `10.0.253.1`, not the gateway `10.0.253.254`, not `10.0.253.2`–`10.0.253.10`, and not `10.0.253.11`–`10.0.253.41`. The bridge keeps the default route (`gw_priority`), so Cloudflare still opens `http://derek:3000` and `http://vyas:3000`. For `ubuntu111.research101.stream` it opens `http://caddy:80`, and Caddy opens `https://ubuntu111:3001`. Caddy still opens `https://kali111:3001` for that LAN name.
+Those addresses are not `10.0.253.1`, not the gateway `10.0.253.254`, not `10.0.253.2`–`10.0.253.10`, and not `10.0.253.11`–`10.0.253.41`. The bridge keeps the default route (`gw_priority`), so Cloudflare still opens `http://derek:3000` and `http://vyas:3000`. For `ubuntu111.research101.stream` it opens `http://caddy:80`, and Caddy opens `http://ubuntu111:3000`. Caddy still opens `https://kali111:3001` for that LAN name.
 
 A macvlan interface does not deliver packets to the parent address `10.0.253.1`, so these desktops do not send DNS to dnsmasq there. Compose writes the Ubuntu records into each desktop’s hosts file (`extra_hosts`). `ubuntu01` and `ubuntu01.cybersecurity.lan` both resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40` and `ubuntuserver` at `10.0.253.41`. The same addresses are in `dns/records.conf`.
 
@@ -404,7 +404,7 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **Page loads, black screen.** The browser is not on HTTPS, or something is stripping WebSocket upgrades. Caddy forwards them.
 - **Reset did not run.** `docker compose logs scheduler` should show the timezone at start and a `reset:` line after 02:00. `docker compose exec scheduler date` should match `TZ`.
 - **502 Bad gateway on derek or vyas.** Cloudflare reached the tunnel and nothing accepted HTTP on port 3000. `docker compose logs derek` should include `Mint login on http://0.0.0.0:3000` before apt finishes. `ERROR: apt-get update failed` or `ERROR: apt-get install failed` means packages did not install; the login page stays up. Origins stay `http://derek:3000` and `http://vyas:3000`.
-- **502 or a redirect loop on ubuntu111.research101.stream.** The tunnel origin is HTTP `http://caddy:80`. Caddy serves that hostname on port 80 and opens `https://ubuntu111:3001`. It does not redirect the browser to HTTPS, because Cloudflare already did. After `git pull`, `docker compose restart caddy`. `caddy reload` fails because the admin API is off.
+- **502 or a redirect loop on ubuntu111.research101.stream.** The tunnel origin is HTTP `http://caddy:80`. Caddy serves that hostname on port 80 and opens `http://ubuntu111:3000`. It does not redirect the browser to HTTPS, because Cloudflare already did. After `git pull`, `docker compose restart caddy`. `caddy reload` fails because the admin API is off.
 - **derek or vyas is a blank page.** The public hostname must be service type HTTP, origin `http://derek:3000` or `http://vyas:3000`. RDP does not render in a browser. Replace an RDP route.
 - **The Mint login is rejected.** `DEREK_PASSWORD` or `VYAS_PASSWORD` is empty, or the container was not recreated after the password changed. The entrypoint resets the password from `.env` on start. The same password is used for `sudo` after Cinnamon starts.
 - **Sign-in says the desktop did not start.** A correct password installs `tigervnc-standalone-server` (Xtigervnc) and `util-linux` (runuser) if apt has not finished. Port 3000 stays open during that install. `docker compose logs derek` should then contain `Xtigervnc and runuser are ready` and `Cinnamon started for derek` (`Cinnamon started for vyas` on that desktop).

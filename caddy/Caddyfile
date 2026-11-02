@@ -173,12 +173,11 @@ ubuntu111.{$BASE_DOMAIN} {
 }
 
 http://ubuntu111.research101.stream {
-	reverse_proxy https://ubuntu111:3001 {
+	reverse_proxy http://ubuntu111:3000 {
 		header_up Host {host}
 		header_up X-Forwarded-Proto https
 		header_up X-Real-IP {remote_host}
 		transport http {
-			tls_insecure_skip_verify
 			resolvers 127.0.0.11
 			dial_timeout 10s
 			response_header_timeout 2m

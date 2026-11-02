@@ -674,12 +674,11 @@ def render_caddy(kali: list[str], desktops: list[str]) -> str:
         "\n".join(
             [
                 "http://ubuntu111.research101.stream {",
-                "\treverse_proxy https://ubuntu111:3001 {",
+                "\treverse_proxy http://ubuntu111:3000 {",
                 "\t\theader_up Host {host}",
                 "\t\theader_up X-Forwarded-Proto https",
                 "\t\theader_up X-Real-IP {remote_host}",
                 "\t\ttransport http {",
-                "\t\t\ttls_insecure_skip_verify",
                 "\t\t\tresolvers 127.0.0.11",
                 "\t\t\tdial_timeout 10s",
                 "\t\t\tresponse_header_timeout 2m",
