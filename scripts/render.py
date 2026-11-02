@@ -302,6 +302,8 @@ def lab_host_lines(domain: str, ubuntu: list[tuple[str, str]], extra: list[tuple
     for name, addr in list(ubuntu) + list(extra):
         lines.append(f'  - "{name}.{domain}:{addr}"')
         lines.append(f'  - "{name}:{addr}"')
+    for name, addr in PERSISTENT_DESKTOPS:
+        lines.append(f'  - "{name}:{addr}"')
     lines.append("")
     return lines
 
@@ -455,6 +457,9 @@ def render_compose(
         "    stop_grace_period: 20s",
         "    cap_add:",
         "      - NET_ADMIN",
+        "    sysctls:",
+        '      net.ipv4.conf.all.rp_filter: "0"',
+        '      net.ipv4.conf.default.rp_filter: "0"',
         "    environment:",
         "      PUID: ${PUID:-1000}",
         "      PGID: ${PGID:-1000}",
@@ -506,15 +511,22 @@ def render_compose(
         '    shm_size: "1gb"',
         "    restart: unless-stopped",
         "    stop_grace_period: 20s",
+        "    cap_add:",
+        "      - NET_ADMIN",
+        "    sysctls:",
+        '      net.ipv4.conf.all.rp_filter: "0"',
+        '      net.ipv4.conf.default.rp_filter: "0"',
         "    environment:",
         "      PUID: ${PUID:-1000}",
         "      PGID: ${PGID:-1000}",
         "      TZ: ${TZ:-UTC}",
+        "      SERVER_IP: ${SERVER_IP:-10.0.253.1}",
         "      CUSTOM_USER: ${DESKTOP_USER:-van}",
         "      PASSWORD: ${DESKTOP_PASSWORD:-}",
         "      TITLE: Ubuntu111 desktop",
         "    volumes:",
         "      - ubuntu111-config:/config",
+        "      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro",
         *dual_lan(persistent_addr("ubuntu111")),
         "    logging: *json-logs",
         "    healthcheck:",
