@@ -29,22 +29,22 @@ ensure_shim() {
     echo "PARENT_IFACE $parent is not on this host" >&2
     return 0
   fi
-  if ! ip link show cybersecurity-shim >/dev/null 2>&1; then
-    ip link add cybersecurity-shim link "$parent" type macvlan mode bridge || return 0
+  if ! ip link show cyber-shim >/dev/null 2>&1; then
+    ip link add cyber-shim link "$parent" type macvlan mode bridge || return 0
   fi
-  ip addr show cybersecurity-shim | grep -q '10.0.253.100/' || ip addr add 10.0.253.100/32 dev cybersecurity-shim
-  ip link set cybersecurity-shim up
+  ip addr show cyber-shim | grep -q '10.0.253.100/' || ip addr add 10.0.253.100/32 dev cyber-shim
+  ip link set cyber-shim up
   n=11
   while [ "$n" -le 41 ]; do
-    ip route replace "10.0.253.${n}/32" dev cybersecurity-shim
+    ip route replace "10.0.253.${n}/32" dev cyber-shim
     n=$((n + 1))
   done
   n=50
   while [ "$n" -le 84 ]; do
-    ip route replace "10.0.253.${n}/32" dev cybersecurity-shim
+    ip route replace "10.0.253.${n}/32" dev cyber-shim
     n=$((n + 1))
   done
-  echo "shim cybersecurity-shim is up; ping 10.0.253.11 from this server"
+  echo "shim cyber-shim is up; ping 10.0.253.11 from this server"
 }
 
 ensure_bridge() {

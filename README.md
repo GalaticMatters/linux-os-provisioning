@@ -54,7 +54,7 @@ Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10
 
 A Docker network on that interface was sending `ubuntu01`'s replies away from the macvlan, so ping and SSH to `10.0.253.11` stopped. That Docker network is gone.
 
-The ProLiant's own address `10.0.253.1` cannot reach a macvlan child. `sudo ./scripts/lab-veth.sh` adds a shim, `cybersecurity-shim`, at `10.0.253.100`, and then `ping 10.0.253.11` from this server uses the shim. After `git pull`:
+The ProLiant's own address `10.0.253.1` cannot reach a macvlan child. `sudo ./scripts/lab-veth.sh` adds a shim, `cyber-shim`, at `10.0.253.100`, and then `ping 10.0.253.11` from this server uses the shim. After `git pull`:
 
 ```sh
 docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'kali%02d ubuntu%02d ' "$n" "$n"; done) kali111 ubuntu111
@@ -270,15 +270,15 @@ The ProLiant cannot ping macvlan addresses such as `10.0.253.11` (`ubuntu01`). L
 docker exec -it ubuntu01 bash
 ```
 
-Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.41`, not the persistent desktop block `10.0.253.50`–`10.0.253.54`, and not the Kali fleet block `10.0.253.55`–`10.0.253.84`. This is not created for you:
+Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.41`, not the persistent desktop block `10.0.253.50`–`10.0.253.54`, and not the Kali fleet block `10.0.253.55`–`10.0.253.84`. `sudo ./scripts/lab-veth.sh` creates it. The same steps by hand:
 
 ```sh
 # PARENT_IFACE is the interface which already has 10.0.253.1 (br-ex or eno1).
-sudo ip link add cybersecurity-shim link "$PARENT_IFACE" type macvlan mode bridge
-sudo ip addr add 10.0.253.100/32 dev cybersecurity-shim
-sudo ip link set cybersecurity-shim up
+sudo ip link add cyber-shim link "$PARENT_IFACE" type macvlan mode bridge
+sudo ip addr add 10.0.253.100/32 dev cyber-shim
+sudo ip link set cyber-shim up
 for i in $(seq 11 40); do
-  sudo ip route add "10.0.253.${i}/32" dev cybersecurity-shim
+  sudo ip route add "10.0.253.${i}/32" dev cyber-shim
 done
 ```
 
