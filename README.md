@@ -141,7 +141,7 @@ Port 22 on that container’s LAN address. Nothing is published on the Docker ho
 - Set `SSH_PASSWORD` if you want password login. `PasswordAuthentication` is on only when a password is set.
 - Leave both empty in `.env.example`. Do not commit `.env`.
 - A `$` in `SSH_PASSWORD` must be written `$$`. Compose treats `$` as interpolation.
-- Root login and empty passwords are off. The `sudo` package is installed. The SSH account is not in the `sudo` group.
+- Root login and empty passwords are off. The `sudo` package is installed. The SSH account is added to the `sudo` group at start and uses its password for `sudo`.
 
 Host keys are created when the container starts (`ssh-keygen -A`). They are not stored in the image. The 02:00 reset deletes them. Clients will see a changed host key and must update `known_hosts`.
 
