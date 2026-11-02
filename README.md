@@ -153,18 +153,13 @@ SSH is the same account as before. ubuntu01–ubuntu30 take `SSH_USER` and `SSH_
 
 Those packages live in the image. The 02:00 reset still recreates ubuntu01–ubuntu30, because they are labeled `fleet.reset`. It still does not recreate ubuntuserver. Recreate drops the writable layer (the account, `authorized_keys`, and the host keys) and keeps the image, so `apt`, `ping`, `ip`, `curl`, and `sudo` come back. A package installed later with `apt` sits on the writable layer, so the next recreate removes it. `./scripts/lab.sh on` and `off` still only start and stop kali01–kali30 and ubuntu01–ubuntu30.
 
-On the ProLiant, after `git pull`, rebuild the image once, then recreate ubuntu01–ubuntu30 onto it:
+On the ProLiant, after `git pull`:
 
 ```sh
-docker compose build ubuntu01
-docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'ubuntu%02d ' "$n"; done)
+./scripts/lab.sh rebuild
 ```
 
-One build updates `cybersecurity-ubuntu-ssh:1` for the whole fleet. Recreate ubuntuserver on its own when it should use that image. The 02:00 job does not:
-
-```sh
-docker compose up -d --force-recreate --no-deps ubuntuserver
-```
+`rebuild` builds `cybersecurity-ubuntu-ssh:1` once, then force-recreates ubuntu01–ubuntu30 and ubuntuserver onto that image. It does not touch the Kali fleet, the other desktops, Caddy, or dnsmasq. The 02:00 job still recreates only ubuntu01–ubuntu30.
 
 ## Macvlan
 
@@ -379,7 +374,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `ubuntu/` | Ubuntu Server image: OpenSSH, apt, ping, ip, curl, and sudo. Host keys at start. Not a desktop. |
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
-| `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, and ubuntu111. `dns-on` / `dns-off` start and stop only dnsmasq |
+| `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, and ubuntu111. `dns-on` / `dns-off` start and stop only dnsmasq. `rebuild` rebuilds the shared Ubuntu image and force-recreates ubuntu01–ubuntu30 and ubuntuserver |
 | `scripts/export-ca.sh` | Copy the Caddy root out of the volume |
 | `scripts/reset-now.sh` | Recreate both fleets now |
 

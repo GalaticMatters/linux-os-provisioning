@@ -12,9 +12,11 @@ cd "$(dirname "$0")/.."
 export COMPOSE_PROFILES=""
 
 fleet=""
+ubuntu=""
 n=1
 while [ "$n" -le 30 ]; do
   fleet="$fleet kali$(printf '%02d' "$n") ubuntu$(printf '%02d' "$n")"
+  ubuntu="$ubuntu ubuntu$(printf '%02d' "$n")"
   n=$((n + 1))
 done
 
@@ -44,8 +46,14 @@ case "${1:-}" in
   dns-off)
     exec docker compose --profile dns stop dnsmasq
     ;;
+  rebuild)
+    # One build of the shared image, then recreate ubuntu01–ubuntu30 and ubuntuserver.
+    docker compose build ubuntu01
+    # shellcheck disable=SC2086
+    exec docker compose up -d --force-recreate --no-deps $ubuntu ubuntuserver
+    ;;
   *)
-    echo "usage: $0 on|off|extra-containers-on|extra-containers-off|dns-on|dns-off" >&2
+    echo "usage: $0 on|off|extra-containers-on|extra-containers-off|dns-on|dns-off|rebuild" >&2
     exit 2
     ;;
 esac
