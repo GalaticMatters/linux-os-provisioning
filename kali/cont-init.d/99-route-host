@@ -1,0 +1,21 @@
+#!/usr/bin/with-contenv bash
+# SERVER_IP (10.0.253.1) is on the macvlan parent. The host never sees frames
+# sent to that address out the macvlan NIC. A /32 via the compose bridge, which
+# is the default gateway, delivers SSH to sshd on the host.
+set -eu
+host="${SERVER_IP:-}"
+if [ -z "$host" ]; then
+  echo "SERVER_IP is unset; not adding a host route" >&2
+  exit 0
+fi
+if ! command -v ip >/dev/null 2>&1; then
+  apt-get update
+  apt-get install -y --no-install-recommends iproute2
+fi
+gw=$(ip -4 route show default | awk '{print $3; exit}')
+if [ -z "$gw" ]; then
+  echo "no default gateway; not routing $host" >&2
+  exit 0
+fi
+ip route replace "${host}/32" via "$gw"
+echo "route ${host}/32 via ${gw}"

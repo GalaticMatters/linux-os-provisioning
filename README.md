@@ -198,7 +198,7 @@ Persistent desktops, same idea, different addresses:
 
 Those addresses are not `10.0.253.1`, not the gateway `10.0.253.254`, not `10.0.253.2`–`10.0.253.10`, and not `10.0.253.11`–`10.0.253.41`. The bridge keeps the default route (`gw_priority`), so Cloudflare still opens `http://derek:3000` and `http://vyas:3000`. For `ubuntu111.research101.stream` it opens `http://caddy:80`, and Caddy opens `http://ubuntu111:3000`. Caddy still opens `https://kali111:3001` for that LAN name.
 
-A macvlan interface does not deliver packets to the parent address `10.0.253.1`, so these desktops do not send DNS to dnsmasq there. Compose writes the Ubuntu records into each desktop’s hosts file (`extra_hosts`). `ubuntu01` and `ubuntu01.cybersecurity.lan` both resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40` and `ubuntuserver` at `10.0.253.41`. The same addresses are in `dns/records.conf`.
+A macvlan interface does not deliver packets to the parent address `10.0.253.1`, so these desktops do not send DNS to dnsmasq there. kali111 is the exception for SSH to the server: at start it adds a route for `SERVER_IP` via the compose bridge, so `ssh` to `10.0.253.1` reaches sshd on the ProLiant. Use a host account. Recreate kali111 after pulling that change: `docker compose up -d --force-recreate --no-deps kali111`. Compose writes the Ubuntu records into each desktop’s hosts file (`extra_hosts`). `ubuntu01` and `ubuntu01.cybersecurity.lan` both resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40` and `ubuntuserver` at `10.0.253.41`. The same addresses are in `dns/records.conf`.
 
 From a terminal on kali111, ubuntu111, ubuntu100, derek, or vyas:
 
