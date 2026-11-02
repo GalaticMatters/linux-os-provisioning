@@ -9,7 +9,7 @@
 # extra_hosts maps ubuntuNN to the macvlan address on the Kali fleet and those five.
 # The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.
 # Each pair also has a private lab bridge. Inside the container that NIC
-# is veth-peer. Ubuntu is 10.201.N.2 and serves DHCP. Kali takes a lease.
+# is veth-peer. No lab address or DHCP service is configured.
 # lab01 is 10.201.1.0/24. lab111 is 10.201.111.0/24. Cloudflare still opens
 # http://kali111:3000 and http://ubuntu111:3000. derek and vyas stay
 # http://derek:3000 and http://vyas:3000.
@@ -104,7 +104,6 @@ x-kali: &kali
     - /config:rw,nosuid,nodev,size=${DESKTOP_TMPFS_SIZE:-2g},mode=1777
   volumes:
     - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
-    - ./lab/veth-peer.sh:/custom-cont-init.d/99-veth-peer:ro
   labels:
     fleet.reset: "true"
   extra_hosts: *lab-hosts
@@ -129,8 +128,6 @@ x-ubuntu: &ubuntu
     SSH_PUBLIC_KEY: "${SSH_PUBLIC_KEY:-}"
     SSH_PASSWORD: "${SSH_PASSWORD:-}"
     TZ: ${TZ:-UTC}
-  volumes:
-    - ./lab/veth-peer.sh:/usr/local/bin/veth-peer.sh:ro
   labels:
     fleet.reset: "true"
   logging: *json-logs
@@ -482,7 +479,6 @@ services:
       lab01:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.1.2
   ubuntu02:
     hostname: ubuntu02
     <<: *ubuntu
@@ -493,7 +489,6 @@ services:
       lab02:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.2.2
   ubuntu03:
     hostname: ubuntu03
     <<: *ubuntu
@@ -504,7 +499,6 @@ services:
       lab03:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.3.2
   ubuntu04:
     hostname: ubuntu04
     <<: *ubuntu
@@ -515,7 +509,6 @@ services:
       lab04:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.4.2
   ubuntu05:
     hostname: ubuntu05
     <<: *ubuntu
@@ -526,7 +519,6 @@ services:
       lab05:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.5.2
   ubuntu06:
     hostname: ubuntu06
     <<: *ubuntu
@@ -537,7 +529,6 @@ services:
       lab06:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.6.2
   ubuntu07:
     hostname: ubuntu07
     <<: *ubuntu
@@ -548,7 +539,6 @@ services:
       lab07:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.7.2
   ubuntu08:
     hostname: ubuntu08
     <<: *ubuntu
@@ -559,7 +549,6 @@ services:
       lab08:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.8.2
   ubuntu09:
     hostname: ubuntu09
     <<: *ubuntu
@@ -570,7 +559,6 @@ services:
       lab09:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.9.2
   ubuntu10:
     hostname: ubuntu10
     <<: *ubuntu
@@ -581,7 +569,6 @@ services:
       lab10:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.10.2
   ubuntu11:
     hostname: ubuntu11
     <<: *ubuntu
@@ -592,7 +579,6 @@ services:
       lab11:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.11.2
   ubuntu12:
     hostname: ubuntu12
     <<: *ubuntu
@@ -603,7 +589,6 @@ services:
       lab12:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.12.2
   ubuntu13:
     hostname: ubuntu13
     <<: *ubuntu
@@ -614,7 +599,6 @@ services:
       lab13:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.13.2
   ubuntu14:
     hostname: ubuntu14
     <<: *ubuntu
@@ -625,7 +609,6 @@ services:
       lab14:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.14.2
   ubuntu15:
     hostname: ubuntu15
     <<: *ubuntu
@@ -636,7 +619,6 @@ services:
       lab15:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.15.2
   ubuntu16:
     hostname: ubuntu16
     <<: *ubuntu
@@ -647,7 +629,6 @@ services:
       lab16:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.16.2
   ubuntu17:
     hostname: ubuntu17
     <<: *ubuntu
@@ -658,7 +639,6 @@ services:
       lab17:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.17.2
   ubuntu18:
     hostname: ubuntu18
     <<: *ubuntu
@@ -669,7 +649,6 @@ services:
       lab18:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.18.2
   ubuntu19:
     hostname: ubuntu19
     <<: *ubuntu
@@ -680,7 +659,6 @@ services:
       lab19:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.19.2
   ubuntu20:
     hostname: ubuntu20
     <<: *ubuntu
@@ -691,7 +669,6 @@ services:
       lab20:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.20.2
   ubuntu21:
     hostname: ubuntu21
     <<: *ubuntu
@@ -702,7 +679,6 @@ services:
       lab21:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.21.2
   ubuntu22:
     hostname: ubuntu22
     <<: *ubuntu
@@ -713,7 +689,6 @@ services:
       lab22:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.22.2
   ubuntu23:
     hostname: ubuntu23
     <<: *ubuntu
@@ -724,7 +699,6 @@ services:
       lab23:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.23.2
   ubuntu24:
     hostname: ubuntu24
     <<: *ubuntu
@@ -735,7 +709,6 @@ services:
       lab24:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.24.2
   ubuntu25:
     hostname: ubuntu25
     <<: *ubuntu
@@ -746,7 +719,6 @@ services:
       lab25:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.25.2
   ubuntu26:
     hostname: ubuntu26
     <<: *ubuntu
@@ -757,7 +729,6 @@ services:
       lab26:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.26.2
   ubuntu27:
     hostname: ubuntu27
     <<: *ubuntu
@@ -768,7 +739,6 @@ services:
       lab27:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.27.2
   ubuntu28:
     hostname: ubuntu28
     <<: *ubuntu
@@ -779,7 +749,6 @@ services:
       lab28:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.28.2
   ubuntu29:
     hostname: ubuntu29
     <<: *ubuntu
@@ -790,7 +759,6 @@ services:
       lab29:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.29.2
   ubuntu30:
     hostname: ubuntu30
     <<: *ubuntu
@@ -801,7 +769,6 @@ services:
       lab30:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.30.2
   kali111:
     hostname: kali111
     image: lscr.io/linuxserver/kali-linux:latest
@@ -823,7 +790,6 @@ services:
       - kali111-config:/config
       - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
-      - ./lab/veth-peer.sh:/custom-cont-init.d/99-veth-peer:ro
     extra_hosts: *lab-hosts
     networks:
       desktop:
@@ -889,7 +855,6 @@ services:
       - ubuntu111-config:/config
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
       - ./ubuntu/custom-services.d/sshd:/custom-services.d/sshd:ro
-      - ./lab/veth-peer.sh:/custom-cont-init.d/99-veth-peer:ro
     extra_hosts: *lab-hosts
     networks:
       desktop:
@@ -897,7 +862,6 @@ services:
       lab111:
         interface_name: veth-peer
         gw_priority: 0
-        ipv4_address: 10.201.111.2
     logging: *json-logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]

@@ -47,20 +47,15 @@ Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecu
 
 Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10.0.253.55` for kali01 through `10.0.253.84` for kali30. kali111 and ubuntu111 stay on that bridge with cloudflared, so the tunnel opens `http://kali111:3000` and `http://ubuntu111:3000`. Ping and SSH to `ubuntu01.cybersecurity.lan` work from kali01–kali30 and from ubuntu100, derek, or vyas.
 
-## Student DHCP lab
+## Lab interface
 
-Each pair shares one private bridge that does not leave the host. kali01 and ubuntu01 are on `10.201.1.0/24`, kali02 and ubuntu02 on `10.201.2.0/24`, through kali30 and ubuntu30 on `10.201.30.0/24`. kali111 and ubuntu111 share `10.201.111.0/24`. Inside every one of those containers the interface is named `veth-peer`. The desktop bridge and the macvlan stay the path for Caddy, Cloudflare, and `10.0.253.0/24`.
+kali01 and ubuntu01 share a private bridge, as do kali02 and ubuntu02, through kali30 and ubuntu30. kali111 and ubuntu111 share one too. Inside every one of those containers the extra interface is named `veth-peer`. Nothing in the image assigns a lab address or starts DHCP. Docker gives `veth-peer` an address on that pair's subnet when the container starts: `10.201.1.0/24` for pair 01, `10.201.2.0/24` for pair 02, through `10.201.30.0/24`, and `10.201.111.0/24` for kali111 and ubuntu111. `10.201.N.1` is the bridge on the ProLiant. The desktop bridge and the macvlan stay the path for Caddy, Cloudflare, and `10.0.253.0/24`. ubuntuserver, ubuntu100, derek, and vyas do not have this interface.
 
-ubuntuNN keeps `10.201.N.2/24` and runs dhcpd for `10.201.N.50`–`10.201.N.150`. The server does not hand out a default router or DNS, so the existing default route and `resolv.conf` stay. kaliNN drops Docker's address on `veth-peer` and runs dhclient. `10.201.N.1` is the bridge on the ProLiant, not an address inside the container. ubuntuserver, ubuntu100, derek, and vyas are not on a lab bridge.
-
-The Ubuntu fleet image already includes `isc-dhcp-server`. A webtop (the Kali fleet, kali111, ubuntu111) installs `isc-dhcp-client` or `isc-dhcp-server` on first start if the image does not have it. After `git pull` on the ProLiant, rebuild the Ubuntu image and recreate the desktops that use `veth-peer`:
+`NET_ADMIN` is set on those containers so a lab can change the address. After `git pull`:
 
 ```sh
-./scripts/lab.sh rebuild
-docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'kali%02d ' "$n"; done) kali111 ubuntu111
+docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'kali%02d ubuntu%02d ' "$n"; done) kali111 ubuntu111
 ```
-
-From kali01, `ip -4 addr show veth-peer` should show an address in `10.201.1.50`–`10.201.1.150`. From ubuntu01, `ip -4 addr show veth-peer` shows `10.201.1.2/24`. The same check on kali111 and ubuntu111 uses `10.201.111.0/24`, with ubuntu111 at `10.201.111.2`.
 
 All 30 Kali containers share one image, `lscr.io/linuxserver/kali-linux:latest`. There is one copy of that image on disk.
 
@@ -164,7 +159,7 @@ Host keys are created when the container starts (`ssh-keygen -A`). They are not 
 
 ## Ubuntu server packages
 
-ubuntu01–ubuntu30 and ubuntuserver share one local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04`. It is an Ubuntu server: `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, `sudo`, and `isc-dhcp-server`. `apt`, `ping` (`iputils-ping`), and `ip` (`iproute2`) are on the image. There is no desktop and no Webtop. ubuntuserver does not attach `veth-peer`; dhcpd starts only on ubuntu01–ubuntu30 and ubuntu111.
+ubuntu01–ubuntu30 and ubuntuserver share one local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04`. It is an Ubuntu server: `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, and `sudo`. `apt`, `ping` (`iputils-ping`), and `ip` (`iproute2`) are on the image. There is no desktop and no Webtop.
 
 SSH is the same account as before. ubuntu01–ubuntu30 take `SSH_USER` and `SSH_PUBLIC_KEY` or `SSH_PASSWORD` from `.env`. ubuntuserver takes `DESKTOP_USER` (default `van`) and `DESKTOP_PASSWORD` on that same image. Addresses stay on the macvlan: `10.0.253.11` through `10.0.253.40`, and ubuntuserver at `10.0.253.41`.
 
@@ -388,8 +383,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `.env.example` | Domain, timezone, NIC, subnet, counts, SSH placeholders |
 | `caddy/Caddyfile` | Generated. Internal CA and one site per Kali desktop |
 | `caddy/site/index.html` | Generated page on the apex name |
-| `ubuntu/` | Ubuntu Server image: OpenSSH, apt, ping, ip, curl, sudo, and dhcpd. Host keys at start. Not a desktop. |
-| `lab/veth-peer.sh` | Names the lab NIC `veth-peer`, starts dhcpd on Ubuntu, and requests a lease on Kali |
+| `ubuntu/` | Ubuntu Server image: OpenSSH, apt, ping, ip, curl, and sudo. Host keys at start. Not a desktop. |
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
 | `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, and ubuntu111. `dns-on` / `dns-off` start and stop only dnsmasq. `rebuild` rebuilds the shared Ubuntu image and force-recreates ubuntu01–ubuntu30 and ubuntuserver |
@@ -402,7 +396,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 
 `derek` and `vyas` use `dockerscripts/linuxmint:cinnamon` (Linux Mint Cinnamon, Firefox). The image has no HTTP port, so the entrypoint adds noVNC on port 3000. Registry index digest `sha256:094170fed2aaa379cd8c85f48fbf395dd7bfc2b19511b73f037cc340fe414342`. The linux/amd64 manifest is `sha256:02f4a0cb1561907d22865e2ed075c9c198443557d5884d316d3bfe0d3c268825`, pushed 26 October 2026.
 
-Ubuntu is a local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04` with `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, `sudo`, and `isc-dhcp-server`. `apt`, `ping`, and `ip` are on the image. ubuntu01–ubuntu30 and ubuntuserver use it. It is not a browser desktop.
+Ubuntu is a local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04` with `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, and `sudo`. `apt`, `ping`, and `ip` are on the image. ubuntu01–ubuntu30 and ubuntuserver use it. It is not a browser desktop.
 
 Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, Compose plugin `v5.6.0`, supercronic `v0.2.50`, dnsmasq image `alpine:3.22`.
 

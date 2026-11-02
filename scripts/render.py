@@ -12,9 +12,9 @@ kali01–kali30 resolve to 10.0.253.1 for browsers and also take
 on the desktop bridge for Caddy. Each kaliNN/ubuntuNN pair also shares a
 private bridge: lab01 is 10.201.1.0/24 through lab30, and lab111 is
 10.201.111.0/24 for kali111 and ubuntu111. Inside those containers the
-NIC is named veth-peer. Ubuntu keeps 10.201.N.2 and runs dhcpd. Kali
-takes a lease and does not replace the default route. ubuntu100, derek,
-and vyas stay on the desktop bridge and macvlan at 10.0.253.52–54.
+NIC is named veth-peer. No lab address or DHCP service is configured.
+ubuntu100, derek, and vyas stay on the desktop bridge and macvlan at
+10.0.253.52–54.
 Hosts entries on every Kali desktop and those persistent desktops map
 ubuntuNN names to the Ubuntu macvlan addresses.
 Re-run after changing KALI_COUNT, UBUNTU_COUNT, UBUNTU_IP_START, SERVER_IP, or BASE_DOMAIN.
@@ -190,28 +190,22 @@ def lab_network_key(name: str) -> str:
     return f"lab{number}"
 
 
-def lab_server_ip(name: str) -> str:
-    return f"10.201.{lab_number(name)}.2"
-
-
-def lab_attach_lines(name: str, address: str | None = None) -> list[str]:
+def lab_attach_lines(name: str) -> list[str]:
     """Attach the pair's private bridge. The NIC inside the container is veth-peer.
 
     gw_priority 0 keeps this bridge from becoming the default route.
     The desktop bridge (Kali) and the macvlan (Ubuntu) stay at 100.
+    Docker assigns an address; the lab configuration is left to the operator.
     """
-    lines = [
+    return [
         f"      {lab_network_key(name)}:",
         "        interface_name: veth-peer",
         "        gw_priority: 0",
     ]
-    if address:
-        lines.append(f"        ipv4_address: {address}")
-    return lines
 
 
 def lab_network_lines(names: list[str]) -> list[str]:
-    """One internal bridge per pair, so thirty dhcpds do not share a LAN."""
+    """One internal bridge per pair. Nothing on it is configured as a lab service."""
     ordered: dict[str, int] = {}
     for name in names:
         ordered.setdefault(lab_network_key(name), lab_number(name))
@@ -425,7 +419,7 @@ def render_compose(
         "# extra_hosts maps ubuntuNN to the macvlan address on the Kali fleet and those five.",
         "# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.",
         "# Each pair also has a private lab bridge. Inside the container that NIC",
-        "# is veth-peer. Ubuntu is 10.201.N.2 and serves DHCP. Kali takes a lease.",
+        "# is veth-peer. No lab address or DHCP service is configured.",
         "# lab01 is 10.201.1.0/24. lab111 is 10.201.111.0/24. Cloudflare still opens",
         "# http://kali111:3000 and http://ubuntu111:3000. derek and vyas stay",
         "# http://derek:3000 and http://vyas:3000.",
@@ -457,7 +451,6 @@ def render_compose(
         "    - /config:rw,nosuid,nodev,size=${DESKTOP_TMPFS_SIZE:-2g},mode=1777",
         "  volumes:",
         "    - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro",
-        "    - ./lab/veth-peer.sh:/custom-cont-init.d/99-veth-peer:ro",
         "  labels:",
         '    fleet.reset: "true"',
         "  extra_hosts: *lab-hosts",
@@ -482,8 +475,6 @@ def render_compose(
         '    SSH_PUBLIC_KEY: "${SSH_PUBLIC_KEY:-}"',
         '    SSH_PASSWORD: "${SSH_PASSWORD:-}"',
         "    TZ: ${TZ:-UTC}",
-        "  volumes:",
-        "    - ./lab/veth-peer.sh:/usr/local/bin/veth-peer.sh:ro",
         "  labels:",
         '    fleet.reset: "true"',
         "  logging: *json-logs",
@@ -517,7 +508,7 @@ def render_compose(
             "      lan:",
             "        gw_priority: 100",
             f"        ipv4_address: {addr}",
-            *lab_attach_lines(name, lab_server_ip(name)),
+            *lab_attach_lines(name),
         ]
     lines += [
         "  kali111:",
@@ -541,7 +532,6 @@ def render_compose(
         "      - kali111-config:/config",
         "      - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro",
         "      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro",
-        "      - ./lab/veth-peer.sh:/custom-cont-init.d/99-veth-peer:ro",
         "    extra_hosts: *lab-hosts",
         "    networks:",
         "      desktop:",
@@ -600,12 +590,11 @@ def render_compose(
         "      - ubuntu111-config:/config",
         "      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro",
         "      - ./ubuntu/custom-services.d/sshd:/custom-services.d/sshd:ro",
-        "      - ./lab/veth-peer.sh:/custom-cont-init.d/99-veth-peer:ro",
         "    extra_hosts: *lab-hosts",
         "    networks:",
         "      desktop:",
         "        gw_priority: 100",
-        *lab_attach_lines("ubuntu111", lab_server_ip("ubuntu111")),
+        *lab_attach_lines("ubuntu111"),
         "    logging: *json-logs",
         "    healthcheck:",
         '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3000\'"]',
