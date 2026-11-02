@@ -2,6 +2,8 @@
 # ubuntu111 is a desktop image and does not ship sshd. Without this, SSH to
 # the container is connection refused. The account is CUSTOM_USER (van) and
 # the password is PASSWORD, the same pair as the web login.
+# This file must sit directly in /custom-services.d. A run script in a
+# subdirectory is never started.
 set -eu
 
 user="${CUSTOM_USER:-van}"
