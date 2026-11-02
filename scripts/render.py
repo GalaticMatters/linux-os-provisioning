@@ -521,6 +521,7 @@ def render_compose(
         "    volumes:",
         "      - ubuntu111-config:/config",
         "      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro",
+        "      - ./ubuntu/custom-services.d/sshd/run:/custom-services.d/sshd/run:ro",
         "    extra_hosts: *lab-hosts",
         "    networks: [desktop]",
         "    logging: *json-logs",

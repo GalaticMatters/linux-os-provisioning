@@ -1,0 +1,51 @@
+#!/usr/bin/with-contenv bash
+# ubuntu111 is a desktop image and does not ship sshd. Without this, SSH to
+# the container is connection refused. The account is CUSTOM_USER (van) and
+# the password is PASSWORD, the same pair as the web login.
+set -eu
+
+user="${CUSTOM_USER:-van}"
+pass="${PASSWORD:-}"
+
+case "$user" in
+  root)
+    echo "CUSTOM_USER must not be root." >&2
+    exit 1
+    ;;
+  [a-z_][a-z0-9_-]*)
+    ;;
+  *)
+    echo "CUSTOM_USER must be a lowercase account name, got: $user" >&2
+    exit 1
+    ;;
+esac
+
+if ! command -v sshd >/dev/null 2>&1; then
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server
+fi
+
+if ! id "$user" >/dev/null 2>&1; then
+  useradd --create-home --shell /bin/bash --user-group "$user"
+fi
+if [ -n "$pass" ]; then
+  printf '%s:%s\n' "$user" "$pass" | chpasswd
+fi
+if getent group sudo >/dev/null 2>&1; then
+  usermod -aG sudo "$user"
+fi
+
+mkdir -p /run/sshd /etc/ssh/sshd_config.d
+cat > /etc/ssh/sshd_config.d/ubuntu111.conf << EOF
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+PermitRootLogin no
+PermitEmptyPasswords no
+AllowUsers ${user}
+UsePAM yes
+EOF
+
+ssh-keygen -A >/dev/null
+echo "sshd for ${user} on port 22"
+exec /usr/sbin/sshd -D -e
