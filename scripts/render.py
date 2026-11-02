@@ -666,14 +666,26 @@ def render_caddy(kali: list[str], desktops: list[str]) -> str:
                 ]
             )
         )
-    # Cloudflare dials Caddy over HTTP. Caddy opens the Selkies HTTPS port.
-    # http://ubuntu111:3000 from cloudflared is a 502: that HTTP listener does
-    # not complete the tunnel the way port 3001 does.
+    # Cloudflare already terminated HTTPS and dials Caddy on port 80.
+    # A bare hostname makes Caddy answer with a 308 to HTTPS, and the browser
+    # loops. The http:// prefix serves this name on port 80 only.
+    # X-Forwarded-Proto https keeps the desktop from redirecting again.
     blocks.append(
         "\n".join(
             [
-                "ubuntu111.research101.stream {",
-                "\timport desktop https://ubuntu111:3001",
+                "http://ubuntu111.research101.stream {",
+                "\treverse_proxy https://ubuntu111:3001 {",
+                "\t\theader_up Host {host}",
+                "\t\theader_up X-Forwarded-Proto https",
+                "\t\theader_up X-Real-IP {remote_host}",
+                "\t\ttransport http {",
+                "\t\t\ttls_insecure_skip_verify",
+                "\t\t\tresolvers 127.0.0.11",
+                "\t\t\tdial_timeout 10s",
+                "\t\t\tresponse_header_timeout 2m",
+                "\t\t}",
+                "\t\tflush_interval -1",
+                "\t}",
                 "}",
             ]
         )
