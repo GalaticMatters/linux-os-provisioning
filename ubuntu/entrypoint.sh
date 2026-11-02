@@ -103,5 +103,8 @@ ClientAliveInterval 60
 EOF
 
 ssh-keygen -A >/dev/null
+if [ -f /usr/local/bin/veth-peer.sh ]; then
+  sh /usr/local/bin/veth-peer.sh || echo "veth-peer setup failed" >&2
+fi
 /usr/sbin/sshd -t
 exec /usr/sbin/sshd -D -e
