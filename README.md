@@ -40,6 +40,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000`, macvlan `10.0.253.53` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000`, macvlan `10.0.253.54` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://kali111.research101.stream` | Cloudflare HTTP `http://kali111:3000` | Persistent Kali on the `desktop` bridge, same network as cloudflared and ubuntu111. |
+| `ssh ssh.research101.stream` | Cloudflare SSH `ssh://host.docker.internal:22` | The ProLiant sshd. Same machine as `10.0.253.1`, without signing in to kali111 first. |
 | `https://ubuntu111.research101.stream` | Cloudflare HTTP `http://ubuntu111:3000` | Persistent Ubuntu desktop on that same bridge. SSH is `ssh van@ubuntu111` on port 22, same password as the web login. |
 | ubuntu100 | macvlan `10.0.253.52`, still `ubuntu100` on the `desktop` bridge | Persistent Ubuntu desktop on the 500 GB disk. Same reachability. |
 
@@ -125,8 +126,36 @@ Do not add a second tunnel token. `cloudflared` (profile `public`) is the tunnel
 | `vyas.research101.stream` | `http://vyas:3000` |
 | `ubuntu111.research101.stream` | `http://ubuntu111:3000` |
 | `kali111.research101.stream` | `http://kali111:3000` |
+| `ssh.research101.stream` | `ssh://host.docker.internal:22` |
 
 `/` is the login page. After sign-in, Firefox is in the Cinnamon menu. `sudo` in a terminal asks for the same password.
+
+## SSH to the ProLiant
+
+`ssh.research101.stream` is the ProLiant’s own sshd, the same port you reach as `10.0.253.1` from kali111. The tunnel connects to it on the Docker bridge (`host.docker.internal`). Port 22 is not published on the host. Add that row on the existing tunnel. Service type **SSH**. Then put an Access application on the hostname for your account, so the public name is not an open login.
+
+On the ProLiant, `ss -lptn 'sport = :22'` should show `0.0.0.0:22` or `*:22`. Recreate only cloudflared so it learns the bridge address:
+
+```sh
+git pull
+docker compose --profile public up -d --force-recreate --no-deps cloudflared
+```
+
+On your laptop, install `cloudflared` and add this to `~/.ssh/config`. `User` is the account you already use on the ProLiant:
+
+```sshconfig
+Host ssh.research101.stream
+  User YOUR_PROLIANT_ACCOUNT
+  ProxyCommand cloudflared access ssh --hostname %h
+```
+
+Then, from any network:
+
+```sh
+ssh ssh.research101.stream
+```
+
+The first connection opens a browser for the Access check, then a normal shell on the ProLiant.
 
 On the ProLiant, from this repo:
 

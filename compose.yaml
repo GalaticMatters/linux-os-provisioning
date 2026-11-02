@@ -13,6 +13,7 @@
 # lab01 is 10.201.1.0/24. lab111 is 10.201.111.0/24. Cloudflare still opens
 # http://kali111:3000 and http://ubuntu111:3000. derek and vyas stay
 # http://derek:3000 and http://vyas:3000.
+# cloudflared reaches the ProLiant sshd as host.docker.internal:22.
 # Re-run the script after changing counts, UBUNTU_IP_START, or BASE_DOMAIN.
 # PARENT_IFACE, LAN_SUBNET, and LAN_GATEWAY are still read from .env when Compose starts.
 
@@ -1061,6 +1062,8 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks: [desktop]
     logging: *json-logs
 
