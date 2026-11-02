@@ -103,5 +103,8 @@ ClientAliveInterval 60
 EOF
 
 ssh-keygen -A >/dev/null
+if [ -f /usr/local/bin/keep-default-route.sh ]; then
+  sh /usr/local/bin/keep-default-route.sh || echo "keep-default-route failed" >&2
+fi
 /usr/sbin/sshd -t
 exec /usr/sbin/sshd -D -e

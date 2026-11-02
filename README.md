@@ -52,6 +52,8 @@ Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10
 
 kali01 and ubuntu01 share a private bridge, as do kali02 and ubuntu02, through kali30 and ubuntu30. kali111 and ubuntu111 share one too. Inside every one of those containers the extra interface is named `veth-peer`. Nothing in the image assigns a lab address or starts DHCP. Docker gives `veth-peer` an address on that pair's subnet when the container starts: `10.201.1.0/24` for pair 01, `10.201.2.0/24` for pair 02, through `10.201.30.0/24`, and `10.201.111.0/24` for kali111 and ubuntu111. `10.201.N.1` is the bridge on the ProLiant. The desktop bridge and the macvlan stay the path for Caddy, Cloudflare, and `10.0.253.0/24`. ubuntuserver, ubuntu100, derek, and vyas do not have this interface.
 
+Docker also installs a default route via `10.201.N.1`. That sends replies into the lab bridge, so ping and SSH to `ubuntu01` (`10.0.253.11`) stop. At start the container deletes only that default route. Ubuntu servers go back to `LAN_GATEWAY` on the macvlan. Kali desktops go back to the `desktop` bridge. `veth-peer` stays up for the lab.
+
 `NET_ADMIN` is set on those containers so a lab can change the address. After `git pull`:
 
 ```sh

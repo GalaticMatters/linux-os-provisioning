@@ -104,6 +104,7 @@ x-kali: &kali
   tmpfs:
     - /config:rw,nosuid,nodev,size=${DESKTOP_TMPFS_SIZE:-2g},mode=1777
   volumes:
+    - ./lab/keep-default-route.sh:/custom-cont-init.d/01-keep-default-route:ro
     - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
   labels:
     fleet.reset: "true"
@@ -129,6 +130,9 @@ x-ubuntu: &ubuntu
     SSH_PUBLIC_KEY: "${SSH_PUBLIC_KEY:-}"
     SSH_PASSWORD: "${SSH_PASSWORD:-}"
     TZ: ${TZ:-UTC}
+    LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.254}
+  volumes:
+    - ./lab/keep-default-route.sh:/usr/local/bin/keep-default-route.sh:ro
   labels:
     fleet.reset: "true"
   logging: *json-logs
@@ -789,6 +793,7 @@ services:
       TITLE: Kali111
     volumes:
       - kali111-config:/config
+      - ./lab/keep-default-route.sh:/custom-cont-init.d/01-keep-default-route:ro
       - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
     extra_hosts: *lab-hosts
@@ -854,6 +859,7 @@ services:
       TITLE: Ubuntu111 desktop
     volumes:
       - ubuntu111-config:/config
+      - ./lab/keep-default-route.sh:/custom-cont-init.d/01-keep-default-route:ro
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
       - ./ubuntu/custom-services.d/sshd:/custom-services.d/sshd:ro
     extra_hosts: *lab-hosts
