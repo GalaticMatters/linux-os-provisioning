@@ -57,7 +57,7 @@ A Docker network on that interface was sending `ubuntu01`'s replies away from th
 The ProLiant's own address `10.0.253.1` cannot reach a macvlan child. `sudo ./scripts/lab-veth.sh` adds a shim, `cybersecurity-shim`, at `10.0.253.100`, and then `ping 10.0.253.11` from this server uses the shim. After `git pull`:
 
 ```sh
-docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'kali%02d ubuntu%02d ' "$n"; done) kali111 ubuntu111
+docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'kali%02d ubuntu%02d ' "$n" "$n"; done) kali111 ubuntu111
 sudo ./scripts/lab-veth.sh
 ping -c 2 10.0.253.11
 ```
