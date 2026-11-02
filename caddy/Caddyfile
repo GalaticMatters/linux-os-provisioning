@@ -171,7 +171,3 @@ ubuntu100.{$BASE_DOMAIN} {
 ubuntu111.{$BASE_DOMAIN} {
 	import desktop https://ubuntu111:3001
 }
-
-http://ubuntu111.research101.stream {
-	import desktop https://ubuntu111:3001
-}

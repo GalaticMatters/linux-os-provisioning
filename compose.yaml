@@ -4,10 +4,13 @@
 # Every service has mem_limit 4g. That is a ceiling, not a reservation.
 # kali01 is 10.0.253.55 and kali30 is 10.0.253.84 on desktop and macvlan.
 # Caddy still reaches each kaliNN by container name on the desktop bridge.
-# Persistent desktops on desktop and macvlan: kali111 10.0.253.50, ubuntu111 10.0.253.51, ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54.
+# Persistent desktops on desktop and macvlan: ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54.
+# kali111 and ubuntu111 are on the desktop bridge only, with cloudflared.
 # extra_hosts maps ubuntuNN to the macvlan address on the Kali fleet and those five.
-# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001
-# and Cloudflare still reaches http://derek:3000, http://vyas:3000, and kali111.
+# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.
+# kali111 and ubuntu111 are only on that bridge. Cloudflare opens
+# http://kali111:3000 and http://ubuntu111:3000. derek and vyas stay
+# http://derek:3000 and http://vyas:3000.
 # Re-run the script after changing counts, UBUNTU_IP_START, or BASE_DOMAIN.
 # PARENT_IFACE, LAN_SUBNET, and LAN_GATEWAY are still read from .env when Compose starts.
 
@@ -511,14 +514,10 @@ services:
       - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
     extra_hosts: *lab-hosts
-    networks:
-      desktop:
-        gw_priority: 100
-      lan:
-        ipv4_address: 10.0.253.50
+    networks: [desktop]
     logging: *json-logs
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3001'"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -573,14 +572,10 @@ services:
       - ubuntu111-config:/config
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
     extra_hosts: *lab-hosts
-    networks:
-      desktop:
-        gw_priority: 100
-      lan:
-        ipv4_address: 10.0.253.51
+    networks: [desktop]
     logging: *json-logs
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3001'"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
       interval: 30s
       timeout: 5s
       retries: 5
