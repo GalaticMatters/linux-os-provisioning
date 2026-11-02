@@ -302,8 +302,6 @@ def lab_host_lines(domain: str, ubuntu: list[tuple[str, str]], extra: list[tuple
     for name, addr in list(ubuntu) + list(extra):
         lines.append(f'  - "{name}.{domain}:{addr}"')
         lines.append(f'  - "{name}:{addr}"')
-    for name, addr in PERSISTENT_DESKTOPS:
-        lines.append(f'  - "{name}:{addr}"')
     lines.append("")
     return lines
 
@@ -683,24 +681,13 @@ def render_caddy(kali: list[str], desktops: list[str]) -> str:
             )
         )
     # Cloudflare already terminated HTTPS and dials Caddy on port 80.
-    # A bare hostname makes Caddy answer with a 308 to HTTPS, and the browser
-    # loops. The http:// prefix serves this name on port 80 only.
-    # X-Forwarded-Proto https keeps the desktop from redirecting again.
+    # The http:// prefix stops Caddy from redirecting the browser to HTTPS.
+    # The upstream is the same Selkies HTTPS port the LAN name uses.
     blocks.append(
         "\n".join(
             [
                 "http://ubuntu111.research101.stream {",
-                "\treverse_proxy http://ubuntu111:3000 {",
-                "\t\theader_up Host {host}",
-                "\t\theader_up X-Forwarded-Proto https",
-                "\t\theader_up X-Real-IP {remote_host}",
-                "\t\ttransport http {",
-                "\t\t\tresolvers 127.0.0.11",
-                "\t\t\tdial_timeout 10s",
-                "\t\t\tresponse_header_timeout 2m",
-                "\t\t}",
-                "\t\tflush_interval -1",
-                "\t}",
+                "\timport desktop https://ubuntu111:3001",
                 "}",
             ]
         )

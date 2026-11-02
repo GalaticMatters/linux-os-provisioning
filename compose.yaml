@@ -76,11 +76,6 @@ x-lab-hosts: &lab-hosts
   - "ubuntu30:10.0.253.40"
   - "ubuntuserver.cybersecurity.lan:10.0.253.41"
   - "ubuntuserver:10.0.253.41"
-  - "kali111:10.0.253.50"
-  - "ubuntu111:10.0.253.51"
-  - "ubuntu100:10.0.253.52"
-  - "derek:10.0.253.53"
-  - "vyas:10.0.253.54"
 
 x-logging: &json-logs
   driver: json-file
