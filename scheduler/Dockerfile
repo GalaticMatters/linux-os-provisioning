@@ -7,7 +7,7 @@ ARG TARGETARCH=amd64
 ARG SUPERCRONIC_VERSION=0.2.50
 ARG COMPOSE_VERSION=5.6.0
 
-RUN apk add --no-cache ca-certificates curl jq tzdata \
+RUN apk add --no-cache ca-certificates curl jq tzdata iproute2 util-linux-misc \
     && case "$TARGETARCH" in \
          amd64) \
            sc_arch=amd64; sc_sum=d2d7c97fbfefc763d5bbcbbb3f8d61f9dd3410ce5d05a737c414994b80b8cdd0; \

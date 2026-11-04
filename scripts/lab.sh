@@ -20,11 +20,19 @@ while [ "$n" -le 30 ]; do
   n=$((n + 1))
 done
 
+add_lab_veth() {
+  if [ "$(id -u)" -eq 0 ]; then
+    ./scripts/lab-veth.sh || echo "veth-peer was not added. Run: sudo ./scripts/lab-veth.sh" >&2
+  else
+    sudo ./scripts/lab-veth.sh || echo "veth-peer was not added. Run: sudo ./scripts/lab-veth.sh" >&2
+  fi
+}
+
 case "${1:-}" in
   on)
     # shellcheck disable=SC2086
     docker compose up -d $fleet
-    ./scripts/lab-veth.sh || echo "veth-peer was not added. Run: sudo ./scripts/lab-veth.sh" >&2
+    add_lab_veth
     ;;
   off)
     # shellcheck disable=SC2086
@@ -37,7 +45,7 @@ case "${1:-}" in
     ;;
   extra-containers-on)
     docker compose up -d derek vyas kali111 ubuntu111
-    ./scripts/lab-veth.sh || echo "veth-peer was not added. Run: sudo ./scripts/lab-veth.sh" >&2
+    add_lab_veth
     ;;
   extra-containers-off)
     exec docker compose stop derek vyas kali111 ubuntu111
@@ -53,7 +61,7 @@ case "${1:-}" in
     docker compose build ubuntu01
     # shellcheck disable=SC2086
     docker compose up -d --force-recreate --no-deps $ubuntu ubuntuserver
-    ./scripts/lab-veth.sh || echo "veth-peer was not added. Run: sudo ./scripts/lab-veth.sh" >&2
+    add_lab_veth
     ;;
   *)
     echo "usage: $0 on|off|extra-containers-on|extra-containers-off|dns-on|dns-off|rebuild" >&2

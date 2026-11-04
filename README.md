@@ -50,7 +50,15 @@ Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10
 
 ## Lab interface
 
-`veth-peer` is a second cable inside kali01–kali30, ubuntu01–ubuntu30, kali111, and ubuntu111. It has no address and no default route. kali01 and ubuntu01 share one bridge, through kali30 and ubuntu30, and kali111 shares one with ubuntu111. It is not the path to `10.0.253.11`. ubuntuserver, ubuntu100, derek, and vyas do not have it.
+`veth-peer` is a second cable with no address and no default route. kali01's `veth-peer` is the other end of ubuntu01's `veth-peer`. kali02 is cabled only to ubuntu02, through kali30 to ubuntu30, and kali111 to ubuntu111. It is not the path to `10.0.253.11`. ubuntuserver, ubuntu100, derek, and vyas do not have it.
+
+kali111 and ubuntu111 keep that cable until those two containers are recreated. The 02:00 job recreates kali01–kali30 and ubuntu01–ubuntu30, and the cable is deleted with the old network namespace. After that recreate, the job runs `scripts/lab-veth.sh` again. A pair that already has `veth-peer` on both sides is left alone, so this does not reset the 111 lab. With the fleet up, put the student cables back now:
+
+```sh
+sudo ./scripts/lab-veth.sh
+```
+
+`docker exec kali01 ip link show veth-peer` and `docker exec ubuntu01 ip link show veth-peer` should both list the interface. The same check works for kali30 and ubuntu30. A line that says `skip kali01 (not running)` means that container is stopped; start the fleet with `./scripts/lab.sh on` and run the sudo command again.
 
 A Docker network on that interface was sending `ubuntu01`'s replies away from the macvlan, so ping and SSH to `10.0.253.11` stopped. That Docker network is gone.
 
@@ -389,6 +397,15 @@ The job runs [`scheduler/reset-desktops.sh`](scheduler/reset-desktops.sh), which
 2. Selects every service labeled `fleet.reset: "true"` (the fleet Kali desktops and the fleet Ubuntu SSH servers).
 3. Runs `docker compose up -d --force-recreate --no-deps --renew-anon-volumes` for those services only.
 4. Restarts Caddy so it drops cached Kali addresses. Caddy is not recreated, and its CA volume is not removed.
+5. Runs `scripts/lab-veth.sh` so kali01 is paired with ubuntu01 again, through kali30 with ubuntu30. kali111 and ubuntu111 are not recreated, so their cable is left as it is.
+
+The scheduler image has to include `ip` and `nsenter` for step 5. After `git pull`:
+
+```sh
+docker compose build scheduler
+docker compose up -d --no-deps scheduler
+sudo ./scripts/lab-veth.sh
+```
 
 Recreate replaces the container.
 

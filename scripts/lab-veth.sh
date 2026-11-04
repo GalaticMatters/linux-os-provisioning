@@ -1,8 +1,10 @@
 #!/bin/sh
-# Give each Kali/Ubuntu pair an interface named veth-peer, with no address
-# and no default route. Also add a macvlan shim so this server can ping
-# 10.0.253.11. The shim is the only way off the parent NIC: frames from
-# 10.0.253.1 never reach a macvlan child.
+# Pair kali01 with ubuntu01, through kali30 with ubuntu30, and kali111
+# with ubuntu111. Each pair gets one cable. Both ends are named veth-peer,
+# with no address and no default route. A pair that already has veth-peer
+# on both sides is left alone. Also add a macvlan shim so this server can
+# ping 10.0.253.11. The shim is the only way off the parent NIC: frames
+# from 10.0.253.1 never reach a macvlan child.
 set -u
 
 cd "$(dirname "$0")/.."
@@ -47,42 +49,76 @@ ensure_shim() {
   echo "shim cyber-shim is up; ping 10.0.253.11 from this server"
 }
 
-ensure_bridge() {
-  br=$1
-  if ! ip link show "$br" >/dev/null 2>&1; then
-    ip link add "$br" type bridge
-    ip link set "$br" type bridge stp_state 0 forward_delay 0
-  fi
-  ip link set "$br" up
-}
-
-attach_veth() {
+container_pid() {
   svc=$1
-  hostif=$2
-  br=$3
   cid=$(docker compose ps -q "$svc" 2>/dev/null || true)
   if [ -z "$cid" ]; then
-    echo "skip $svc (not running)"
-    return 0
+    return 1
   fi
   pid=$(docker inspect -f '{{.State.Pid}}' "$cid" 2>/dev/null || true)
   if [ -z "$pid" ] || [ "$pid" = "0" ]; then
-    echo "skip $svc (not running)"
+    return 1
+  fi
+  printf '%s\n' "$pid"
+}
+
+has_veth() {
+  nsenter -t "$1" -n ip link show veth-peer >/dev/null 2>&1
+}
+
+pair_veth() {
+  kali=$1
+  ubuntu=$2
+  hostk=$3
+  hostu=$4
+  kpid=$(container_pid "$kali" || true)
+  upid=$(container_pid "$ubuntu" || true)
+  if [ -z "$kpid" ]; then
+    echo "skip $kali (not running)"
+  fi
+  if [ -z "$upid" ]; then
+    echo "skip $ubuntu (not running)"
+  fi
+  if [ -z "$kpid" ] || [ -z "$upid" ]; then
     return 0
   fi
-  if nsenter -t "$pid" -n ip link show veth-peer >/dev/null 2>&1; then
-    echo "$svc already has veth-peer"
+  if has_veth "$kpid" && has_veth "$upid"; then
+    echo "$kali and $ubuntu already have veth-peer"
     return 0
   fi
-  ip link del "$hostif" >/dev/null 2>&1 || true
-  tmp="p${hostif}"
-  ip link add "$hostif" type veth peer name "$tmp"
-  ip link set "$tmp" netns "$pid"
-  nsenter -t "$pid" -n ip link set "$tmp" name veth-peer
-  nsenter -t "$pid" -n ip link set veth-peer up
-  ip link set "$hostif" master "$br"
-  ip link set "$hostif" up
-  echo "$svc veth-peer is up on $br with no address"
+  if has_veth "$kpid"; then
+    nsenter -t "$kpid" -n ip link del veth-peer >/dev/null 2>&1 || true
+  fi
+  if has_veth "$upid"; then
+    nsenter -t "$upid" -n ip link del veth-peer >/dev/null 2>&1 || true
+  fi
+  ip link del "$hostk" >/dev/null 2>&1 || true
+  ip link del "$hostu" >/dev/null 2>&1 || true
+  if ! ip link add "$hostk" type veth peer name "$hostu"; then
+    echo "could not create a cable for $kali and $ubuntu" >&2
+    return 0
+  fi
+  if ! ip link set "$hostk" netns "$kpid"; then
+    ip link del "$hostu" >/dev/null 2>&1 || true
+    echo "could not move veth-peer into $kali" >&2
+    return 0
+  fi
+  if ! ip link set "$hostu" netns "$upid"; then
+    nsenter -t "$kpid" -n ip link del "$hostk" >/dev/null 2>&1 || true
+    echo "could not move veth-peer into $ubuntu" >&2
+    return 0
+  fi
+  if ! nsenter -t "$kpid" -n ip link set "$hostk" name veth-peer; then
+    echo "could not rename the cable inside $kali" >&2
+    return 0
+  fi
+  if ! nsenter -t "$upid" -n ip link set "$hostu" name veth-peer; then
+    echo "could not rename the cable inside $ubuntu" >&2
+    return 0
+  fi
+  nsenter -t "$kpid" -n ip link set veth-peer up || true
+  nsenter -t "$upid" -n ip link set veth-peer up || true
+  echo "$kali and $ubuntu are paired on veth-peer with no address"
 }
 
 ensure_shim
@@ -90,12 +126,8 @@ ensure_shim
 n=1
 while [ "$n" -le 30 ]; do
   tag=$(printf '%02d' "$n")
-  ensure_bridge "brlab${tag}"
-  attach_veth "kali${tag}" "vk${tag}" "brlab${tag}"
-  attach_veth "ubuntu${tag}" "vu${tag}" "brlab${tag}"
+  pair_veth "kali${tag}" "ubuntu${tag}" "vk${tag}" "vu${tag}"
   n=$((n + 1))
 done
 
-ensure_bridge brlab111
-attach_veth kali111 vk111 brlab111
-attach_veth ubuntu111 vu111 brlab111
+pair_veth kali111 ubuntu111 vk111 vu111
