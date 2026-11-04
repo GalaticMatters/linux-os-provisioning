@@ -66,10 +66,17 @@ has_veth() {
   nsenter -t "$1" -n ip link show veth-peer >/dev/null 2>&1
 }
 
-# Kali runs NetworkManager. A new ethernet device is claimed, DHCP runs, and
-# the address on the desktop bridge can disappear. Caddy reaches kali01 at
-# that address. ubuntu01 is macvlan-only, so it keeps working.
-# veth-peer stays unmanaged: ip, dhclient, and dhcpd still configure the lab.
+# A bare veth does not break the desktop. NetworkManager does: it claims the
+# new cable, and the bridge address Caddy uses can end up missing or sitting
+# on veth-peer. ubuntu01 has no NetworkManager, so its macvlan address stays.
+# veth-peer stays unmanaged. ip, dhclient, and dhcpd still configure the lab.
+iface_name() {
+  name=$1
+  name=${name%%@*}
+  name=${name%:}
+  printf '%s\n' "$name"
+}
+
 keep_kali_net() {
   svc=$1
   pid=$2
@@ -88,21 +95,40 @@ fi' || true
       if [ -z "$ip" ] || [ -z "$prefix" ] || [ -z "$mac" ]; then
         continue
       fi
-      # ip -o link prints eth0@if3320: — the device name is eth0.
-      iface=$(nsenter -t "$pid" -n ip -o link show | awk -v mac="$mac" 'BEGIN { mac = tolower(mac) } tolower($0) ~ mac { name = $2; sub(/@if[0-9]*:?/, "", name); sub(/:$/, "", name); print name; exit }')
+      # ip -o link prints eth0@if3320: — the kernel device is eth0.
+      raw=$(nsenter -t "$pid" -n ip -o link show | awk -v mac="$mac" 'BEGIN { mac = tolower(mac) } tolower($0) ~ mac { print $2; exit }')
+      iface=$(iface_name "$raw")
       if [ -z "$iface" ]; then
+        echo "$svc has no interface for $ip" >&2
         continue
       fi
+      nsenter -t "$pid" -m /bin/sh -c "command -v nmcli >/dev/null 2>&1 && nmcli device set '$iface' managed no >/dev/null 2>&1 || true"
       nsenter -t "$pid" -n ip link set "$iface" up
+      # Same address on veth-peer makes Caddy's reply leave on the lab cable.
+      nsenter -t "$pid" -n ip -o -4 addr show | awk -v ip="$ip/" '$3 == "inet" && index($4, ip) == 1 { print $2 }' |
+        while read -r other; do
+          other=$(iface_name "$other")
+          if [ -n "$other" ] && [ "$other" != "$iface" ]; then
+            nsenter -t "$pid" -n ip addr del "$ip/$prefix" dev "$other" || true
+          fi
+        done
       nsenter -t "$pid" -n ip addr replace "$ip/$prefix" dev "$iface"
       case "$name" in
         *desktop*)
           if [ -n "$gw" ]; then
             nsenter -t "$pid" -n ip route replace default via "$gw" dev "$iface"
           fi
+          server_ip=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$cid" | sed -n 's/^SERVER_IP=//p' | head -1)
+          if [ -n "$server_ip" ] && [ -n "$gw" ]; then
+            nsenter -t "$pid" -n ip route replace "$server_ip/32" via "$gw" dev "$iface"
+          fi
           ;;
       esac
+      echo "$svc $ip/$prefix is on $iface"
     done
+  if ! nsenter -t "$pid" -m /bin/sh -c 'bash -c "echo >/dev/tcp/127.0.0.1/3001"' >/dev/null 2>&1; then
+    echo "$svc is not listening on port 3001" >&2
+  fi
 }
 
 pair_veth() {
