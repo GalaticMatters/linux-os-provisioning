@@ -82,12 +82,14 @@ fi' || true
   if [ -z "$cid" ]; then
     return 0
   fi
-  docker inspect -f '{{range $name, $net := .NetworkSettings.Networks}}{{printf "%s|%s|%s|%s|%s\n" $name $net.IPAddress $net.IPPrefixLen $net.Gateway $net.MacAddress}}{{end}}' "$cid" |
+  # IPPrefixLen is an int. %s prints %!s(int=16) and ip rejects the prefix.
+  docker inspect -f '{{range $name, $net := .NetworkSettings.Networks}}{{printf "%s|%s|%d|%s|%s\n" $name $net.IPAddress $net.IPPrefixLen $net.Gateway $net.MacAddress}}{{end}}' "$cid" |
     while IFS='|' read -r name ip prefix gw mac; do
       if [ -z "$ip" ] || [ -z "$prefix" ] || [ -z "$mac" ]; then
         continue
       fi
-      iface=$(nsenter -t "$pid" -n ip -o link show | awk -v mac="$mac" 'BEGIN { mac = tolower(mac) } tolower($0) ~ mac { name = $2; sub(/:$/, "", name); print name; exit }')
+      # ip -o link prints eth0@if3320: — the device name is eth0.
+      iface=$(nsenter -t "$pid" -n ip -o link show | awk -v mac="$mac" 'BEGIN { mac = tolower(mac) } tolower($0) ~ mac { name = $2; sub(/@if[0-9]*:?/, "", name); sub(/:$/, "", name); print name; exit }')
       if [ -z "$iface" ]; then
         continue
       fi
