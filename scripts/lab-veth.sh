@@ -66,6 +66,43 @@ has_veth() {
   nsenter -t "$1" -n ip link show veth-peer >/dev/null 2>&1
 }
 
+# Kali runs NetworkManager. A new ethernet device is claimed, DHCP runs, and
+# the address on the desktop bridge can disappear. Caddy reaches kali01 at
+# that address. ubuntu01 is macvlan-only, so it keeps working.
+# veth-peer stays unmanaged: ip, dhclient, and dhcpd still configure the lab.
+keep_kali_net() {
+  svc=$1
+  pid=$2
+  nsenter -t "$pid" -m /bin/sh -c 'mkdir -p /etc/NetworkManager/conf.d
+printf "%s\n" "[keyfile]" "unmanaged-devices=interface-name:veth-peer" > /etc/NetworkManager/conf.d/veth-peer-unmanaged.conf
+if command -v nmcli >/dev/null 2>&1; then
+  nmcli device set veth-peer managed no >/dev/null 2>&1 || true
+fi' || true
+  cid=$(docker compose ps -q "$svc" 2>/dev/null || true)
+  if [ -z "$cid" ]; then
+    return 0
+  fi
+  docker inspect -f '{{range $name, $net := .NetworkSettings.Networks}}{{printf "%s|%s|%s|%s|%s\n" $name $net.IPAddress $net.IPPrefixLen $net.Gateway $net.MacAddress}}{{end}}' "$cid" |
+    while IFS='|' read -r name ip prefix gw mac; do
+      if [ -z "$ip" ] || [ -z "$prefix" ] || [ -z "$mac" ]; then
+        continue
+      fi
+      iface=$(nsenter -t "$pid" -n ip -o link show | awk -v mac="$mac" 'BEGIN { mac = tolower(mac) } tolower($0) ~ mac { name = $2; sub(/:$/, "", name); print name; exit }')
+      if [ -z "$iface" ]; then
+        continue
+      fi
+      nsenter -t "$pid" -n ip link set "$iface" up
+      nsenter -t "$pid" -n ip addr replace "$ip/$prefix" dev "$iface"
+      case "$name" in
+        *desktop*)
+          if [ -n "$gw" ]; then
+            nsenter -t "$pid" -n ip route replace default via "$gw" dev "$iface"
+          fi
+          ;;
+      esac
+    done
+}
+
 pair_veth() {
   kali=$1
   ubuntu=$2
@@ -84,6 +121,7 @@ pair_veth() {
   fi
   if has_veth "$kpid" && has_veth "$upid"; then
     echo "$kali and $ubuntu already have veth-peer"
+    keep_kali_net "$kali" "$kpid"
     return 0
   fi
   if has_veth "$kpid"; then
@@ -118,6 +156,7 @@ pair_veth() {
   fi
   nsenter -t "$kpid" -n ip link set veth-peer up || true
   nsenter -t "$upid" -n ip link set veth-peer up || true
+  keep_kali_net "$kali" "$kpid"
   echo "$kali and $ubuntu are paired on veth-peer with no address"
 }
 

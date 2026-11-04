@@ -60,6 +60,8 @@ sudo ./scripts/lab-veth.sh
 
 `docker exec kali01 ip link show veth-peer` and `docker exec ubuntu01 ip link show veth-peer` should both list the interface. The same check works for kali30 and ubuntu30. A line that says `skip kali01 (not running)` means that container is stopped; start the fleet with `./scripts/lab.sh on` and run the sudo command again.
 
+`kali01.cybersecurity.lan` is Caddy on `10.0.253.1`, which opens the desktop at `https://kali01:3001` on the bridge. `ubuntu01` is the macvlan address `10.0.253.11`, so that path does not use Caddy. NetworkManager on Kali ignores `veth-peer`. If it manages that cable it starts DHCP and can drop the bridge address, and the Kali name stops loading while Ubuntu SSH still works. `ip`, `dhclient`, and `dhcpd` still configure the lab cable.
+
 A Docker network on that interface was sending `ubuntu01`'s replies away from the macvlan, so ping and SSH to `10.0.253.11` stopped. That Docker network is gone.
 
 The ProLiant's own address `10.0.253.1` cannot reach a macvlan child. `sudo ./scripts/lab-veth.sh` adds a shim, `cyber-shim`, at `10.0.253.100`, and then `ping 10.0.253.11` from this server uses the shim. After `git pull`:
