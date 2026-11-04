@@ -102,33 +102,43 @@ fi' || true
         echo "$svc has no interface for $ip" >&2
         continue
       fi
-      nsenter -t "$pid" -m /bin/sh -c "command -v nmcli >/dev/null 2>&1 && nmcli device set '$iface' managed no >/dev/null 2>&1 || true"
-      nsenter -t "$pid" -n ip link set "$iface" up
-      # Same address on veth-peer makes Caddy's reply leave on the lab cable.
-      nsenter -t "$pid" -n ip -o -4 addr show | awk -v ip="$ip/" '$3 == "inet" && index($4, ip) == 1 { print $2 }' |
-        while read -r other; do
-          other=$(iface_name "$other")
-          if [ -n "$other" ] && [ "$other" != "$iface" ]; then
-            nsenter -t "$pid" -n ip addr del "$ip/$prefix" dev "$other" || true
-          fi
-        done
-      nsenter -t "$pid" -n ip addr replace "$ip/$prefix" dev "$iface"
+      # Leave a correct Docker address alone. Telling NetworkManager to drop
+      # eth0 while Selkies is still starting keeps port 3001 closed.
+      misplaced=""
+      others=$(nsenter -t "$pid" -n ip -o -4 addr show | awk -v ip="$ip/" '$3 == "inet" && index($4, ip) == 1 { print $2 }')
+      for other in $others; do
+        other=$(iface_name "$other")
+        if [ -n "$other" ] && [ "$other" != "$iface" ]; then
+          misplaced=1
+          nsenter -t "$pid" -n ip addr del "$ip/$prefix" dev "$other" || true
+        fi
+      done
+      if ! nsenter -t "$pid" -n ip -o -4 addr show dev "$iface" | awk -v ip="$ip/" '$3 == "inet" && index($4, ip) == 1 { found = 1 } END { exit !found }'; then
+        nsenter -t "$pid" -n ip link set "$iface" up
+        nsenter -t "$pid" -n ip addr replace "$ip/$prefix" dev "$iface"
+        echo "$svc $ip/$prefix restored on $iface"
+      elif [ -n "$misplaced" ]; then
+        echo "$svc $ip/$prefix moved back to $iface"
+      else
+        echo "$svc $ip/$prefix is on $iface"
+      fi
       case "$name" in
         *desktop*)
           if [ -n "$gw" ]; then
-            nsenter -t "$pid" -n ip route replace default via "$gw" dev "$iface"
+            current=$(nsenter -t "$pid" -n ip -4 route show default | awk 'NR==1 { print $3; exit }')
+            if [ "$current" != "$gw" ]; then
+              nsenter -t "$pid" -n ip route replace default via "$gw" dev "$iface"
+            fi
           fi
           server_ip=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$cid" | sed -n 's/^SERVER_IP=//p' | head -1)
           if [ -n "$server_ip" ] && [ -n "$gw" ]; then
-            nsenter -t "$pid" -n ip route replace "$server_ip/32" via "$gw" dev "$iface"
+            if ! nsenter -t "$pid" -n ip route show "$server_ip/32" | grep -q .; then
+              nsenter -t "$pid" -n ip route replace "$server_ip/32" via "$gw" dev "$iface"
+            fi
           fi
           ;;
       esac
-      echo "$svc $ip/$prefix is on $iface"
     done
-  if ! nsenter -t "$pid" -m /bin/sh -c 'bash -c "echo >/dev/tcp/127.0.0.1/3001"' >/dev/null 2>&1; then
-    echo "$svc is not listening on port 3001" >&2
-  fi
 }
 
 pair_veth() {
