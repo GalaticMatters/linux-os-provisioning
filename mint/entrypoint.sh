@@ -715,18 +715,39 @@ fi
 
 cat > /usr/local/bin/mint-desktop.sh << 'EOF'
 #!/bin/bash
-# Backup listener. The entrypoint already binds port 3000. If that socket is
-# open, stay running so systemd does not start a second bind.
+# Keep HTTP 3000 up. The entrypoint binds it before systemd. systemd can then
+# kill that unmanaged python, and a one-shot "port is up, sleep forever"
+# leaves Cloudflare on a 502 until the container is recreated.
 set +e
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 user='@MINT_USER@'
-if bash -c 'echo >/dev/tcp/127.0.0.1/3000' 2>/dev/null; then
-  printf '%s\n' "Mint login already listening on http://0.0.0.0:3000"
-  while true; do
-    sleep 3600
-  done
-fi
-printf '%s\n' "starting Mint login on port 3000 for ${user}"
-exec python3 -u /usr/local/bin/mint-login.py "$user"
+port_up() {
+  bash -c 'echo >/dev/tcp/127.0.0.1/3000' 2>/dev/null
+}
+while true; do
+  if port_up; then
+    printf '%s\n' "Mint login already listening on http://0.0.0.0:3000"
+    while port_up; do
+      sleep 1
+    done
+    printf '%s\n' "Mint login on port 3000 stopped"
+    continue
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '%s\n' "ERROR: python3 is not installed, so port 3000 is not open yet"
+    sleep 3
+    continue
+  fi
+  if [ ! -f /usr/local/bin/mint-login.py ]; then
+    printf '%s\n' "ERROR: /usr/local/bin/mint-login.py is missing, so port 3000 is not open"
+    sleep 3
+    continue
+  fi
+  printf '%s\n' "starting Mint login on port 3000 for ${user}"
+  python3 -u /usr/local/bin/mint-login.py "$user"
+  printf '%s\n' "Mint login exited, retrying"
+  sleep 1
+done
 EOF
 sed -i "s/@MINT_USER@/${user}/" /usr/local/bin/mint-desktop.sh \
   || log "ERROR: could not set the account in mint-desktop.sh"
@@ -741,7 +762,7 @@ Description=Mint login and Cinnamon over HTTP
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/mint-desktop.sh
-Restart=on-failure
+Restart=always
 RestartSec=3
 
 [Install]
