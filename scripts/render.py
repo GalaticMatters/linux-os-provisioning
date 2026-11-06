@@ -326,7 +326,13 @@ def lab_host_lines(
     return lines
 
 
-def render_persistent_kali(name: str, title: str) -> list[str]:
+def render_persistent_kali(
+    name: str,
+    title: str,
+    user_var: str = "DESKTOP_USER",
+    password_var: str = "DESKTOP_PASSWORD",
+    default_user: str = "van",
+) -> list[str]:
     """Persistent Kali desktop on desktop + macvlan. No fleet.reset label."""
     return [
         f"  {name}:",
@@ -343,8 +349,8 @@ def render_persistent_kali(name: str, title: str) -> list[str]:
         "      PGID: ${PGID:-1000}",
         "      TZ: ${TZ:-UTC}",
         "      SERVER_IP: ${SERVER_IP:-10.0.253.1}",
-        "      CUSTOM_USER: ${DESKTOP_USER:-van}",
-        "      PASSWORD: ${DESKTOP_PASSWORD:-}",
+        f"      CUSTOM_USER: ${{{user_var}:-{default_user}}}",
+        f"      PASSWORD: ${{{password_var}:-}}",
         f"      TITLE: {title}",
         "    volumes:",
         f"      - {name}-config:/config",
@@ -515,7 +521,9 @@ def render_compose(
             f"        ipv4_address: {addr}",
         ]
     lines += render_persistent_kali("kali111", "Kali111")
-    lines += render_persistent_kali("sang", "Sang")
+    lines += render_persistent_kali(
+        "sang", "Sang", "SANG_USER", "SANG_PASSWORD", "sang"
+    )
     lines += [
         "  ubuntu100:",
         "    image: lscr.io/linuxserver/webtop:ubuntu-xfce",
@@ -829,7 +837,7 @@ def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_cou
     html = html.replace(
         "%%DESKTOP_BLURB%%",
         "kali111, sang, ubuntu100, and ubuntu111 keep their files and are not wiped at 02:00. "
-        f"The account on kali111, sang, and ubuntu111 is van. "
+        f"The account on kali111 and ubuntu111 is van. The account on sang is sang. "
         f"ubuntu100 keeps its files on a 500 GB disk. Open them at "
         f"https://kali111.{domain}/, https://sang.{domain}/, https://ubuntu100.{domain}/, and https://ubuntu111.{domain}/. "
         "derek and vyas are persistent Linux Mint Cinnamon desktops with Firefox. "

@@ -60,12 +60,14 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `TZ` | Timezone of the 02:00 reset. A tz database name (`UTC`, `America/New_York`), not a UTC offset. The host clock’s timezone is not used. |
 | `SSH_USER` | Account on every Ubuntu server. Not `root`. |
 | `SSH_PUBLIC_KEY` or `SSH_PASSWORD` | At least one. One single-line OpenSSH public key, and/or a single-line password. |
-| `DESKTOP_USER` | Account on kali111, sang, ubuntu100, ubuntu111, and ubuntuserver. Default `van`. Not used by derek or vyas. |
+| `DESKTOP_USER` | Account on kali111, ubuntu100, ubuntu111, and ubuntuserver. Default `van`. Not used by derek, vyas, or sang. |
 | `DESKTOP_PASSWORD` | Password for that account. Put it only in `.env`. Do not commit it. |
 | `DEREK_USER` | Account on derek. Default `derek`. |
 | `DEREK_PASSWORD` | Password for derek. No default. Put it only in `.env`. Do not commit it. |
 | `VYAS_USER` | Account on vyas. Default `vyas`. |
 | `VYAS_PASSWORD` | Password for vyas. No default. Put it only in `.env`. Do not commit it. |
+| `SANG_USER` | Account on sang. Default `sang`. |
+| `SANG_PASSWORD` | Password for sang. No default. Put it only in `.env`. Do not commit it. |
 
 `KALI_COUNT` and `UBUNTU_COUNT` default to 30. The repo already contains that render, so a copied `.env` can start all 60 without running the generator first.
 
@@ -80,7 +82,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000`, macvlan `10.0.253.53` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000`, macvlan `10.0.253.54` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://kali111.research101.stream` | Cloudflare HTTP `http://kali111:3000`, macvlan `10.0.253.50` | Persistent Kali on the `desktop` bridge, same network as cloudflared. Also on the macvlan, so it can ping `10.0.253.11`. |
-| `https://sang.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.85` | Persistent Kali, same image as kali111. Not part of `lab.sh on`/`off`, and not recreated at 02:00. |
+| `https://sang.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.85` | Persistent Kali, same image as kali111. Sign in as `sang`. Not part of `lab.sh on`/`off`, and not recreated at 02:00. |
 | `https://sang.research101.stream` | Cloudflare HTTP `http://sang:3000`, macvlan `10.0.253.85` | Same desktop. Add that hostname on the existing tunnel. |
 | `ssh ssh.research101.stream` | Cloudflare SSH `ssh://host.docker.internal:22` | The ProLiant sshd. Same machine as `10.0.253.1`, without signing in to kali111 first. |
 | `https://ubuntu111.research101.stream` | Cloudflare HTTP `http://ubuntu111:3000`, macvlan `10.0.253.51` | Persistent Ubuntu desktop on that same bridge, and on the macvlan. SSH is `ssh van@ubuntu111` on port 22, same password as the web login. |
@@ -218,9 +220,9 @@ On the ProLiant, from this repo:
 
 ```sh
 git pull
-# Set DEREK_PASSWORD and VYAS_PASSWORD in .env. Leave them empty in .env.example.
+# Set DEREK_PASSWORD, VYAS_PASSWORD, and SANG_PASSWORD in .env. Leave them empty in .env.example.
 # Do not commit the real passwords.
-docker compose up -d --force-recreate --no-deps derek vyas
+docker compose up -d --force-recreate --no-deps derek vyas sang
 ```
 
 `docker compose up -d --force-recreate --no-deps derek vyas` recreates only those two containers so they pick up the account and the home mount. The named volumes stay. This is not the 02:00 fleet reset. `lab.sh on` does not start or recreate them. It only runs `docker compose up -d` for kali01–kali30 and ubuntu01–ubuntu30. `lab.sh off` leaves derek and vyas running (and kali111, sang, and ubuntu111). `lab.sh extra-containers-on` starts only derek, vyas, kali111, ubuntu111, and sang. `lab.sh extra-containers-off` stops only those five. Neither starts the fleet or dnsmasq, and neither recreates unrelated services. `lab.sh on` does not start or stop dnsmasq or cloudflared. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
