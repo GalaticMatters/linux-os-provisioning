@@ -11,7 +11,8 @@ kali01–kali30 resolve to 10.0.253.1 for browsers and also take
 10.0.253.55–84 on the macvlan, so a re-render keeps that block. They stay
 on the desktop bridge for Caddy. kali111 and ubuntu111 are on that bridge
 and on the macvlan at 10.0.253.50 and 10.0.253.51. ubuntu100, derek, and
-vyas stay on the desktop bridge and macvlan at 10.0.253.52–54.
+vyas stay on the desktop bridge and macvlan at 10.0.253.52–54. sang is a
+persistent Kali extra-container at 10.0.253.85.
 scripts/lab-veth.sh adds an address-less veth-peer for each Kali/Ubuntu
 pair. That interface is not a Docker network and is not the path to
 10.0.253.11.
@@ -175,7 +176,11 @@ PERSISTENT_DESKTOPS: list[tuple[str, str]] = [
     ("ubuntu100", "10.0.253.52"),
     ("derek", "10.0.253.53"),
     ("vyas", "10.0.253.54"),
+    ("sang", "10.0.253.85"),
 ]
+
+# Browser names Caddy serves on SERVER_IP, besides the kali01–kali30 fleet.
+CADDY_LAN_DESKTOPS = ["kali111", "sang", "ubuntu100", "ubuntu111"]
 
 
 def persistent_addr(name: str) -> str:
@@ -312,13 +317,49 @@ def lab_host_lines(
     """
     lines = ["x-lab-hosts: &lab-hosts"]
     lines.append(f'  - "{domain}:{server}"')
-    for name in kali + ["kali111", "ubuntu100", "ubuntu111"]:
+    for name in kali + CADDY_LAN_DESKTOPS:
         lines.append(f'  - "{name}.{domain}:{server}"')
     for name, addr in list(ubuntu) + list(extra):
         lines.append(f'  - "{name}.{domain}:{addr}"')
         lines.append(f'  - "{name}:{addr}"')
     lines.append("")
     return lines
+
+
+def render_persistent_kali(name: str, title: str) -> list[str]:
+    """Persistent Kali desktop on desktop + macvlan. No fleet.reset label."""
+    return [
+        f"  {name}:",
+        f"    hostname: {name}",
+        "    image: lscr.io/linuxserver/kali-linux:latest",
+        "    mem_limit: 4g",
+        '    shm_size: "1gb"',
+        "    restart: unless-stopped",
+        "    stop_grace_period: 20s",
+        "    cap_add:",
+        "      - NET_ADMIN",
+        "    environment:",
+        "      PUID: ${PUID:-1000}",
+        "      PGID: ${PGID:-1000}",
+        "      TZ: ${TZ:-UTC}",
+        "      SERVER_IP: ${SERVER_IP:-10.0.253.1}",
+        "      CUSTOM_USER: ${DESKTOP_USER:-van}",
+        "      PASSWORD: ${DESKTOP_PASSWORD:-}",
+        f"      TITLE: {title}",
+        "    volumes:",
+        f"      - {name}-config:/config",
+        "      - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro",
+        "      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro",
+        *dual_lan(persistent_addr(name)),
+        "    logging: *json-logs",
+        "    healthcheck:",
+        '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3000\'"]',
+        "      interval: 30s",
+        "      timeout: 5s",
+        "      retries: 5",
+        "      start_period: 180s",
+        "",
+    ]
 
 
 def render_mint(name: str) -> list[str]:
@@ -381,12 +422,12 @@ def render_compose(
         f"# {kali[0]} is {kali_addrs[0]} and {kali[-1]} is {kali_addrs[-1]} on desktop and macvlan.",
         "# Caddy still reaches each kaliNN by container name on the desktop bridge.",
         f"# Persistent desktops on desktop and macvlan: {desktop_note}.",
-        "# kali111 and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.",
+        "# kali111, sang, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.",
         "# extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.",
         "# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.",
         "# veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.",
         "# Cloudflare still opens",
-        "# http://kali111:3000 and http://ubuntu111:3000. derek and vyas stay",
+        "# http://kali111:3000, http://sang:3000, and http://ubuntu111:3000. derek and vyas stay",
         "# http://derek:3000 and http://vyas:3000.",
         "# cloudflared reaches the ProLiant sshd as host.docker.internal:22.",
         "# Re-run the script after changing counts, UBUNTU_IP_START, or BASE_DOMAIN.",
@@ -473,37 +514,9 @@ def render_compose(
             "      lan:",
             f"        ipv4_address: {addr}",
         ]
+    lines += render_persistent_kali("kali111", "Kali111")
+    lines += render_persistent_kali("sang", "Sang")
     lines += [
-        "  kali111:",
-        "    hostname: kali111",
-        "    image: lscr.io/linuxserver/kali-linux:latest",
-        "    mem_limit: 4g",
-        '    shm_size: "1gb"',
-        "    restart: unless-stopped",
-        "    stop_grace_period: 20s",
-        "    cap_add:",
-        "      - NET_ADMIN",
-        "    environment:",
-        "      PUID: ${PUID:-1000}",
-        "      PGID: ${PGID:-1000}",
-        "      TZ: ${TZ:-UTC}",
-        "      SERVER_IP: ${SERVER_IP:-10.0.253.1}",
-        "      CUSTOM_USER: ${DESKTOP_USER:-van}",
-        "      PASSWORD: ${DESKTOP_PASSWORD:-}",
-        "      TITLE: Kali111",
-        "    volumes:",
-        "      - kali111-config:/config",
-        "      - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro",
-        "      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro",
-        *dual_lan(persistent_addr("kali111")),
-        "    logging: *json-logs",
-        "    healthcheck:",
-        '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3000\'"]',
-        "      interval: 30s",
-        "      timeout: 5s",
-        "      retries: 5",
-        "      start_period: 180s",
-        "",
         "  ubuntu100:",
         "    image: lscr.io/linuxserver/webtop:ubuntu-xfce",
         "    mem_limit: 4g",
@@ -589,7 +602,7 @@ def render_compose(
         "    restart: unless-stopped",
         "    depends_on:",
     ]
-    for name in kali + ["kali111", "ubuntu100", "ubuntu111"]:
+    for name in kali + CADDY_LAN_DESKTOPS:
         lines.append(f"      - {name}")
     lines += [
         "    environment:",
@@ -683,6 +696,8 @@ def render_compose(
         "    name: cybersecurity-caddy-config",
         "  kali111-config:",
         "    name: cybersecurity-kali111-config",
+        "  sang-config:",
+        "    name: cybersecurity-sang-config",
         "  ubuntu111-config:",
         "    name: cybersecurity-ubuntu111-config",
         "  derek-config:",
@@ -761,7 +776,7 @@ def render_records(kali: list[str], ubuntu: list[tuple[str, str]], extra: list[t
         "# would also answer every subdomain and hide the Ubuntu records.",
         "host-record=__BASE_DOMAIN__,__SERVER_IP__",
     ]
-    for name in kali + ["kali111", "ubuntu100", "ubuntu111"]:
+    for name in kali + CADDY_LAN_DESKTOPS:
         lines.append(f"address=/{name}.__BASE_DOMAIN__/__SERVER_IP__")
     for name, addr in ubuntu + extra:
         lines.append(f"address=/{name}.__BASE_DOMAIN__/{addr}")
@@ -782,7 +797,7 @@ def render_hosts(
         "# SERVER_IP, the domain, the counts, or UBUNTU_IP_START.",
         f"{server_ip} {domain}",
     ]
-    for name in kali + ["kali111", "ubuntu100", "ubuntu111"]:
+    for name in kali + CADDY_LAN_DESKTOPS:
         lines.append(f"{server_ip} {name}.{domain}")
     for name, addr in ubuntu + extra:
         lines.append(f"{addr} {name}.{domain}")
@@ -793,7 +808,7 @@ def render_hosts(
 def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_count: int) -> str:
     template = (root / "caddy" / "index.template.html").read_text()
     items = []
-    for name in kali + ["kali111", "ubuntu100", "ubuntu111"]:
+    for name in kali + CADDY_LAN_DESKTOPS:
         items.append(
             "      "
             f'<li><a class="desk" data-name="{name}" href="https://{name}.{domain}/">'
@@ -813,10 +828,10 @@ def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_cou
     html = html.replace("%%SSH_BLURB%%", blurb)
     html = html.replace(
         "%%DESKTOP_BLURB%%",
-        "kali111, ubuntu100, and ubuntu111 keep their files and are not wiped at 02:00. "
-        f"The account on kali111 and ubuntu111 is van. "
+        "kali111, sang, ubuntu100, and ubuntu111 keep their files and are not wiped at 02:00. "
+        f"The account on kali111, sang, and ubuntu111 is van. "
         f"ubuntu100 keeps its files on a 500 GB disk. Open them at "
-        f"https://kali111.{domain}/, https://ubuntu100.{domain}/, and https://ubuntu111.{domain}/. "
+        f"https://kali111.{domain}/, https://sang.{domain}/, https://ubuntu100.{domain}/, and https://ubuntu111.{domain}/. "
         "derek and vyas are persistent Linux Mint Cinnamon desktops with Firefox. "
         "They are not on this page. Open them in a browser at derek.research101.stream "
         "and vyas.research101.stream. Sign in as DEREK_USER "
@@ -878,7 +893,7 @@ def main() -> int:
         raise SystemExit("Kali fleet addresses overlap the persistent desktop block")
 
     write(root / "compose.yaml", render_compose(kali, ubuntu, domain, extra, str(server)))
-    write(root / "caddy" / "Caddyfile", render_caddy(kali, ["kali111", "ubuntu100", "ubuntu111"]))
+    write(root / "caddy" / "Caddyfile", render_caddy(kali, CADDY_LAN_DESKTOPS))
     write(root / "caddy" / "site" / "index.html", render_index(root, domain, user, kali, ubuntu_count))
     write(root / "dns" / "records.conf", render_records(kali, ubuntu, extra))
     write(root / "dns" / "hosts.example", render_hosts(domain, str(server), kali, ubuntu, extra))

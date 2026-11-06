@@ -42,7 +42,7 @@ ensure_shim() {
     n=$((n + 1))
   done
   n=50
-  while [ "$n" -le 84 ]; do
+  while [ "$n" -le 85 ]; do
     ip route replace "10.0.253.${n}/32" dev cyber-shim
     n=$((n + 1))
   done

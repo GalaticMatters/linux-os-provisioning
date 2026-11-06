@@ -60,7 +60,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `TZ` | Timezone of the 02:00 reset. A tz database name (`UTC`, `America/New_York`), not a UTC offset. The host clock’s timezone is not used. |
 | `SSH_USER` | Account on every Ubuntu server. Not `root`. |
 | `SSH_PUBLIC_KEY` or `SSH_PASSWORD` | At least one. One single-line OpenSSH public key, and/or a single-line password. |
-| `DESKTOP_USER` | Account on kali111, ubuntu100, ubuntu111, and ubuntuserver. Default `van`. Not used by derek or vyas. |
+| `DESKTOP_USER` | Account on kali111, sang, ubuntu100, ubuntu111, and ubuntuserver. Default `van`. Not used by derek or vyas. |
 | `DESKTOP_PASSWORD` | Password for that account. Put it only in `.env`. Do not commit it. |
 | `DEREK_USER` | Account on derek. Default `derek`. |
 | `DEREK_PASSWORD` | Password for derek. No default. Put it only in `.env`. Do not commit it. |
@@ -80,13 +80,15 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000`, macvlan `10.0.253.53` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000`, macvlan `10.0.253.54` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://kali111.research101.stream` | Cloudflare HTTP `http://kali111:3000`, macvlan `10.0.253.50` | Persistent Kali on the `desktop` bridge, same network as cloudflared. Also on the macvlan, so it can ping `10.0.253.11`. |
+| `https://sang.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.85` | Persistent Kali, same image as kali111. Not part of `lab.sh on`/`off`, and not recreated at 02:00. |
+| `https://sang.research101.stream` | Cloudflare HTTP `http://sang:3000`, macvlan `10.0.253.85` | Same desktop. Add that hostname on the existing tunnel. |
 | `ssh ssh.research101.stream` | Cloudflare SSH `ssh://host.docker.internal:22` | The ProLiant sshd. Same machine as `10.0.253.1`, without signing in to kali111 first. |
 | `https://ubuntu111.research101.stream` | Cloudflare HTTP `http://ubuntu111:3000`, macvlan `10.0.253.51` | Persistent Ubuntu desktop on that same bridge, and on the macvlan. SSH is `ssh van@ubuntu111` on port 22, same password as the web login. |
 | ubuntu100 | macvlan `10.0.253.52`, still `ubuntu100` on the `desktop` bridge | Persistent Ubuntu desktop on the 500 GB disk. Same reachability. |
 
 Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. Browsers stay on Caddy. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the Kali container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
 
-Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10.0.253.55` for kali01 through `10.0.253.84` for kali30. kali111 (`10.0.253.50`) and ubuntu111 (`10.0.253.51`) stay on that bridge with cloudflared and are also on the macvlan, so the tunnel opens `http://kali111:3000` and `http://ubuntu111:3000`. The desktop bridge keeps the default route. Ping and SSH to `ubuntu01.cybersecurity.lan` (`10.0.253.11`) use the macvlan, from kali01–kali30, kali111, ubuntu111, ubuntu100, derek, or vyas.
+Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10.0.253.55` for kali01 through `10.0.253.84` for kali30. kali111 (`10.0.253.50`), sang (`10.0.253.85`), and ubuntu111 (`10.0.253.51`) stay on that bridge with cloudflared and are also on the macvlan, so the tunnel opens `http://kali111:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. The desktop bridge keeps the default route. Ping and SSH to `ubuntu01.cybersecurity.lan` (`10.0.253.11`) use the macvlan, from kali01–kali30, kali111, sang, ubuntu111, ubuntu100, derek, or vyas.
 
 ## Lab interface
 
@@ -124,23 +126,23 @@ cp .env.example .env
 ./scripts/lab.sh on
 ```
 
-Start DNS once. `dns-on` starts only dnsmasq. `on` starts only kali01–kali30 and ubuntu01–ubuntu30. It runs `docker compose up -d` with those 60 names, not a bare `up -d`, so it does not recreate or restart kali111, derek, vyas, ubuntu111, ubuntu100, ubuntuserver, Caddy, dnsmasq, or cloudflared. Day to day, `off` stops only those same 60. DNS and every other container stay up:
+Start DNS once. `dns-on` starts only dnsmasq. `on` starts only kali01–kali30 and ubuntu01–ubuntu30. It runs `docker compose up -d` with those 60 names, not a bare `up -d`, so it does not recreate or restart kali111, sang, derek, vyas, ubuntu111, ubuntu100, ubuntuserver, Caddy, dnsmasq, or cloudflared. Day to day, `off` stops only those same 60. DNS and every other container stay up:
 
 ```sh
 ./scripts/lab.sh off
 ./scripts/lab.sh on
 ```
 
-`off` stops only kali01–kali30 and ubuntu01–ubuntu30. It generates those 60 names and `docker stop`s their container IDs. It does not read `docker compose config --services` and it does not call `docker compose stop`. dnsmasq, Caddy, the scheduler, derek, vyas, kali111, ubuntu111, ubuntu100, ubuntuserver, cloudflared, and any other service keep running, so names such as `cybersecurity.lan` still resolve. `./scripts/lab.sh dns-off` stops only dnsmasq.
+`off` stops only kali01–kali30 and ubuntu01–ubuntu30. It generates those 60 names and `docker stop`s their container IDs. It does not read `docker compose config --services` and it does not call `docker compose stop`. dnsmasq, Caddy, the scheduler, derek, vyas, kali111, sang, ubuntu111, ubuntu100, ubuntuserver, cloudflared, and any other service keep running, so names such as `cybersecurity.lan` still resolve. `./scripts/lab.sh dns-off` stops only dnsmasq.
 
-To start or stop the four desktops that `on` and `off` leave alone:
+To start or stop the five desktops that `on` and `off` leave alone:
 
 ```sh
 ./scripts/lab.sh extra-containers-on
 ./scripts/lab.sh extra-containers-off
 ```
 
-`extra-containers-on` starts only derek, vyas, kali111, and ubuntu111 (`docker compose up -d` with those four names). It does not start the fleet or dnsmasq, and it does not recreate unrelated services. `extra-containers-off` stops only those four. It does not stop dnsmasq or the fleet.
+`extra-containers-on` starts only derek, vyas, kali111, ubuntu111, and sang (`docker compose up -d` with those five names). It does not start the fleet or dnsmasq, and it does not recreate unrelated services. `extra-containers-off` stops only those five. It does not stop dnsmasq or the fleet.
 
 When names are down, use the console or `10.0.253.1`, then:
 
@@ -149,7 +151,7 @@ When names are down, use the console or `10.0.253.1`, then:
 ./scripts/lab.sh on
 ```
 
-`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, and `on` names only kali01–kali30 and ubuntu01–ubuntu30, so dnsmasq does not start. `off` keeps dnsmasq running by stopping only the kali01–kali30 and ubuntu01–ubuntu30 container IDs. `extra-containers-on` starts only those four desktops, and `extra-containers-off` stops only them. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
+`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, and `on` names only kali01–kali30 and ubuntu01–ubuntu30, so dnsmasq does not start. `off` keeps dnsmasq running by stopping only the kali01–kali30 and ubuntu01–ubuntu30 container IDs. `extra-containers-on` starts only those five desktops, and `extra-containers-off` stops only them. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
 
 The first start pulls the Kali image (about 4.8 GB). Watch `docker compose ps` and `docker compose logs -f caddy`. Then install the CA and open <https://cybersecurity.lan>.
 
@@ -180,6 +182,7 @@ Do not add a second tunnel token. `cloudflared` (profile `public`) is the tunnel
 | `vyas.research101.stream` | `http://vyas:3000` |
 | `ubuntu111.research101.stream` | `http://ubuntu111:3000` |
 | `kali111.research101.stream` | `http://kali111:3000` |
+| `sang.research101.stream` | `http://sang:3000` |
 | `ssh.research101.stream` | `ssh://host.docker.internal:22` |
 
 `/` is the login page. After sign-in, Firefox is in the Cinnamon menu. `sudo` in a terminal asks for the same password.
@@ -220,7 +223,7 @@ git pull
 docker compose up -d --force-recreate --no-deps derek vyas
 ```
 
-`docker compose up -d --force-recreate --no-deps derek vyas` recreates only those two containers so they pick up the account and the home mount. The named volumes stay. This is not the 02:00 fleet reset. `lab.sh on` does not start or recreate them. It only runs `docker compose up -d` for kali01–kali30 and ubuntu01–ubuntu30. `lab.sh off` leaves derek and vyas running (and kali111 and ubuntu111). `lab.sh extra-containers-on` starts only derek, vyas, kali111, and ubuntu111. `lab.sh extra-containers-off` stops only those four. Neither starts the fleet or dnsmasq, and neither recreates unrelated services. `lab.sh on` does not start or stop dnsmasq or cloudflared. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
+`docker compose up -d --force-recreate --no-deps derek vyas` recreates only those two containers so they pick up the account and the home mount. The named volumes stay. This is not the 02:00 fleet reset. `lab.sh on` does not start or recreate them. It only runs `docker compose up -d` for kali01–kali30 and ubuntu01–ubuntu30. `lab.sh off` leaves derek and vyas running (and kali111, sang, and ubuntu111). `lab.sh extra-containers-on` starts only derek, vyas, kali111, ubuntu111, and sang. `lab.sh extra-containers-off` stops only those five. Neither starts the fleet or dnsmasq, and neither recreates unrelated services. `lab.sh on` does not start or stop dnsmasq or cloudflared. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
 
 The containers run systemd so Cinnamon and the HTTP desktop can start. They stay privileged because systemd needs that to bring the session up. They do not set `cgroup: host` and they do not mount the host `/sys/fs/cgroup`. A host cgroup namespace makes the container exit when another container stops. They stay on the `desktop` network and on the macvlan LAN. The first start installs noVNC, so it takes longer than a later start. `./scripts/lab.sh on` does not recreate them.
 
@@ -289,12 +292,13 @@ Persistent desktops, same idea, different addresses:
 | ubuntu100 | `10.0.253.52` | `ubuntu100` |
 | derek | `10.0.253.53` | `http://derek:3000` |
 | vyas | `10.0.253.54` | `http://vyas:3000` |
+| sang | `10.0.253.85` | `http://sang:3000` on the `desktop` bridge |
 
-Those addresses are not `10.0.253.1`, not the gateway `10.0.253.254`, not `10.0.253.2`–`10.0.253.10`, and not `10.0.253.11`–`10.0.253.41`. The bridge keeps the default route (`gw_priority`), so Cloudflare opens `http://derek:3000`, `http://vyas:3000`, `http://kali111:3000`, and `http://ubuntu111:3000`. Caddy still opens `https://kali111:3001` for the `.cybersecurity.lan` name.
+Those addresses are not `10.0.253.1`, not the gateway `10.0.253.254`, not `10.0.253.2`–`10.0.253.10`, and not `10.0.253.11`–`10.0.253.41`. The bridge keeps the default route (`gw_priority`), so Cloudflare opens `http://derek:3000`, `http://vyas:3000`, `http://kali111:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. Caddy still opens `https://kali111:3001` and `https://sang:3001` for the `.cybersecurity.lan` names.
 
-A macvlan interface does not deliver packets to the parent address `10.0.253.1`, so the macvlan desktops do not send DNS to dnsmasq there. kali111 and ubuntu111 are on the macvlan and on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route (`gw_priority`), so Cloudflare still opens `http://kali111:3000` and `http://ubuntu111:3000`. kali111 still adds a route for `SERVER_IP` via that bridge, so `ssh` to `10.0.253.1` reaches sshd on the ProLiant. Recreate them after pulling: `docker compose up -d --force-recreate --no-deps kali111 ubuntu111`. Compose writes the Ubuntu server records into each desktop’s hosts file (`extra_hosts`). `ubuntu01` and `ubuntu01.cybersecurity.lan` both resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40` and `ubuntuserver` at `10.0.253.41`. The same addresses are in `dns/records.conf`.
+A macvlan interface does not deliver packets to the parent address `10.0.253.1`, so the macvlan desktops do not send DNS to dnsmasq there. kali111, sang, and ubuntu111 are on the macvlan and on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route (`gw_priority`), so Cloudflare still opens `http://kali111:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. kali111 and sang still add a route for `SERVER_IP` via that bridge, so `ssh` to `10.0.253.1` reaches sshd on the ProLiant. Recreate them after pulling: `docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111`. Compose writes the Ubuntu server records into each desktop’s hosts file (`extra_hosts`). `ubuntu01` and `ubuntu01.cybersecurity.lan` both resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40` and `ubuntuserver` at `10.0.253.41`. The same addresses are in `dns/records.conf`.
 
-From a terminal on kali111, ubuntu111, ubuntu100, derek, or vyas:
+From a terminal on kali111, sang, ubuntu111, ubuntu100, derek, or vyas:
 
 ```sh
 ping -c 2 10.0.253.11
@@ -303,13 +307,13 @@ ping -c 2 ubuntu01.cybersecurity.lan
 ssh student@ubuntu01.cybersecurity.lan
 ```
 
-`./scripts/lab.sh off` still stops only kali01–kali30 and ubuntu01–ubuntu30. It does not stop these five.
+`./scripts/lab.sh off` still stops only kali01–kali30 and ubuntu01–ubuntu30. It does not stop these six.
 
 After `git pull` on the ProLiant, recreate only those desktops so they join the macvlan. This is not `lab.sh off` and it is not the 02:00 reset:
 
 ```sh
 git pull
-docker compose up -d --force-recreate --no-deps kali111 ubuntu111 ubuntu100 derek vyas
+docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111 ubuntu100 derek vyas
 ```
 
 Named volumes stay. Then open one of those desktops and run the ping and SSH commands above.
@@ -320,7 +324,7 @@ The ProLiant cannot ping macvlan addresses such as `10.0.253.11` (`ubuntu01`). L
 docker exec -it ubuntu01 bash
 ```
 
-Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.41`, not the persistent desktop block `10.0.253.50`–`10.0.253.54`, and not the Kali fleet block `10.0.253.55`–`10.0.253.84`. `sudo ./scripts/lab-veth.sh` creates it. The same steps by hand:
+Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.41`, not the persistent desktop block `10.0.253.50`–`10.0.253.54`, not sang at `10.0.253.85`, and not the Kali fleet block `10.0.253.55`–`10.0.253.84`. `sudo ./scripts/lab-veth.sh` creates it. The same steps by hand:
 
 ```sh
 # PARENT_IFACE is the interface which already has 10.0.253.1 (br-ex or eno1).
@@ -332,7 +336,7 @@ for i in $(seq 11 40); do
 done
 ```
 
-`10.0.253.100` is only an example shim address: not the gateway `10.0.253.254`, not `10.0.253.1`, not in the reserved range `10.0.253.2`–`10.0.253.10`, not in the Ubuntu range `10.0.253.11`–`10.0.253.41`, not in the persistent desktop block `10.0.253.50`–`10.0.253.54`, and not in the Kali fleet block `10.0.253.55`–`10.0.253.84`. The parent has to accept the extra MACs (promiscuous mode, no port security, not typical Wi-Fi). Cloud interfaces often drop them, and then the containers stay unreachable from the LAN.
+`10.0.253.100` is only an example shim address: not the gateway `10.0.253.254`, not `10.0.253.1`, not in the reserved range `10.0.253.2`–`10.0.253.10`, not in the Ubuntu range `10.0.253.11`–`10.0.253.41`, not in the persistent desktop block `10.0.253.50`–`10.0.253.54`, not sang at `10.0.253.85`, and not in the Kali fleet block `10.0.253.55`–`10.0.253.84`. The parent has to accept the extra MACs (promiscuous mode, no port security, not typical Wi-Fi). Cloud interfaces often drop them, and then the containers stay unreachable from the LAN.
 
 `PARENT_IFACE`, `LAN_SUBNET`, and `LAN_GATEWAY` are read when Compose starts. Changing only the NIC does not require a re-render. The Ubuntu addresses are written into `compose.yaml` and `dns/records.conf`, so they still have to fall inside the subnet you set.
 
@@ -356,7 +360,7 @@ docker compose up -d --build --remove-orphans
 
 There is one Kali image on disk. RAM is per running desktop: about 1–2 GB for the session, plus a tmpfs home up to `DESKTOP_TMPFS_SIZE` (default 2 GB, only written files count) and a 1 GB shared-memory ceiling. Thirty desktops at once is tens of GB of RAM. Lower `KALI_COUNT` on a small host. The Ubuntu image is built once from `ubuntu:24.04` with OpenSSH, `apt`, `ping`, `ip`, `curl`, and `sudo`. Each server is that image. It is not a desktop.
 
-Every container Compose defines has `mem_limit: 4g`: the Kali fleet, the Ubuntu fleet, the persistent desktops (kali111, ubuntu100, ubuntu111, derek, vyas), ubuntuserver, Caddy, dnsmasq, the scheduler, and cloudflared. That is a ceiling. Docker does not reserve 4 GB for an idle container. Desktops still have `shm_size: "1gb"`: the Kali fleet, kali111, ubuntu100, ubuntu111, derek, and vyas.
+Every container Compose defines has `mem_limit: 4g`: the Kali fleet, the Ubuntu fleet, the persistent desktops (kali111, sang, ubuntu100, ubuntu111, derek, vyas), ubuntuserver, Caddy, dnsmasq, the scheduler, and cloudflared. That is a ceiling. Docker does not reserve 4 GB for an idle container. Desktops still have `shm_size: "1gb"`: the Kali fleet, kali111, sang, ubuntu100, ubuntu111, derek, and vyas.
 
 ## DNS
 
@@ -453,7 +457,7 @@ Recreate replaces the container.
 
 - Kali home is a tmpfs on `/config`. The new container has an empty home. Packages written into the image layer rather than the home are discarded too.
 - Ubuntu has no volume. The writable layer goes away, including the account, `authorized_keys`, and the SSH host keys. The entrypoint creates the account again from `.env` and generates new host keys. `apt`, `ping`, `ip`, `curl`, and `sudo` stay, because they are in the image.
-- derek and vyas are not labeled `fleet.reset`. The job does not recreate them, and `cybersecurity-derek-config` and `cybersecurity-vyas-config` stay.
+- derek, vyas, kali111, and sang are not labeled `fleet.reset`. The job does not recreate them. `cybersecurity-derek-config`, `cybersecurity-vyas-config`, `cybersecurity-kali111-config`, and `cybersecurity-sang-config` stay.
 
 Caddy, dnsmasq, and the scheduler keep running. The scheduler is not recreated (that would kill the job). It mounts the Docker socket and runs as root, so it can control the daemon.
 
@@ -478,7 +482,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `ubuntu/` | Ubuntu Server image: OpenSSH, apt, ping, ip, curl, and sudo. Host keys at start. Not a desktop. |
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
-| `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, and ubuntu111. `dns-on` / `dns-off` start and stop only dnsmasq. `rebuild` rebuilds the shared Ubuntu image and force-recreates ubuntu01–ubuntu30 and ubuntuserver |
+| `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, ubuntu111, and sang. `dns-on` / `dns-off` start and stop only dnsmasq. `rebuild` rebuilds the shared Ubuntu image and force-recreates ubuntu01–ubuntu30 and ubuntuserver |
 | `scripts/export-ca.sh` | Copy the Caddy root out of the volume |
 | `scripts/reset-now.sh` | Recreate both fleets now |
 
@@ -495,8 +499,8 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 ## Troubleshooting
 
 - **Ubuntu container exits immediately.** Neither `SSH_PUBLIC_KEY` nor `SSH_PASSWORD` is set, or `SSH_USER` is `root` or not a lowercase account name. `docker compose logs ubuntu01`.
-- **The ProLiant cannot ping `10.0.253.11` (`ubuntu01`). A lab PC can.** SSH from the ProLiant to that address times out the same way. Macvlan on the same NIC. Use `docker exec`, the shim above, or a terminal on kali111, ubuntu111, ubuntu100, derek, or vyas.
-- **kali111 cannot ping `10.0.253.11` or `ubuntu01.cybersecurity.lan`.** That desktop was not recreated after the macvlan addresses landed. From the repo, `docker compose up -d --force-recreate --no-deps kali111 ubuntu111 ubuntu100 derek vyas`.
+- **The ProLiant cannot ping `10.0.253.11` (`ubuntu01`). A lab PC can.** SSH from the ProLiant to that address times out the same way. Macvlan on the same NIC. Use `docker exec`, the shim above, or a terminal on kali111, sang, ubuntu111, ubuntu100, derek, or vyas.
+- **kali111 cannot ping `10.0.253.11` or `ubuntu01.cybersecurity.lan`.** That desktop was not recreated after the macvlan addresses landed. From the repo, `docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111 ubuntu100 derek vyas`.
 - **kali111 cannot open kali01–kali30.** Those names are Caddy at `10.0.253.1`, not the Kali macvlan addresses. `ubuntu01` still works because it is already in `extra_hosts`. Recreate kali111 so it gets the Kali FQDNs: `docker compose up -d --force-recreate --no-deps kali111`. Then `https://kali01.cybersecurity.lan` from that desktop.
 - **kali01 cannot ping `ubuntu01.cybersecurity.lan`.** Recreate the fleet so it picks up `10.0.253.55`–`10.0.253.84`: `docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'kali%02d ' "$n"; done)`, then `docker compose restart caddy`.
 - **Names do not resolve.** dnsmasq is stopped. From the console, or from `10.0.253.1`, run `./scripts/lab.sh dns-on`, then `./scripts/lab.sh on`.
@@ -508,7 +512,7 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **Page loads, black screen.** The browser is not on HTTPS, or something is stripping WebSocket upgrades. Caddy forwards them.
 - **Reset did not run.** `docker compose logs scheduler` should show the timezone at start and a `reset:` line after 02:00. `docker compose exec scheduler date` should match `TZ`.
 - **502 Bad gateway on derek or vyas.** Cloudflare reached the tunnel and nothing accepted HTTP on port 3000. `docker compose logs derek` should include `Mint login on http://0.0.0.0:3000` before apt finishes. `ERROR: apt-get update failed` or `ERROR: apt-get install failed` means packages did not install; the login page stays up. Origins stay `http://derek:3000` and `http://vyas:3000`.
-- **502 on ubuntu111.research101.stream or kali111.research101.stream.** The tunnel origin is HTTP `http://ubuntu111:3000` or `http://kali111:3000`. Both containers are on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route. After `git pull`, `docker compose up -d --force-recreate --no-deps kali111 ubuntu111`.
+- **502 on ubuntu111.research101.stream, kali111.research101.stream, or sang.research101.stream.** The tunnel origin is HTTP `http://ubuntu111:3000`, `http://kali111:3000`, or `http://sang:3000`. Those containers are on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route. After `git pull`, `docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111`.
 - **derek or vyas is a blank page.** The public hostname must be service type HTTP, origin `http://derek:3000` or `http://vyas:3000`. RDP does not render in a browser. Replace an RDP route.
 - **The Mint login is rejected.** `DEREK_PASSWORD` or `VYAS_PASSWORD` is empty, or the container was not recreated after the password changed. The entrypoint resets the password from `.env` on start. The same password is used for `sudo` after Cinnamon starts.
 - **Sign-in says the desktop did not start.** A correct password installs `tigervnc-standalone-server` (Xtigervnc) and `util-linux` (runuser) if apt has not finished. Port 3000 stays open during that install. `docker compose logs derek` should then contain `Xtigervnc and runuser are ready` and `Cinnamon started for derek` (`Cinnamon started for vyas` on that desktop).
