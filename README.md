@@ -17,6 +17,29 @@ VLAN 11 is `object network VLAN11` (`subnet 10.0.254.0 255.255.255.0`). The ASA 
 
 Outside is `GigabitEthernet0/0` (`nameif outside`, `ip address dhcp setroute`). `Management0/0` was administratively down at `192.168.1.1`. That address overlaps the outside LAN, so it has to be removed before outside DHCP in `192.168.1.0/24` will stay bound.
 
+## Lab switch
+
+One Catalyst 3560-X carries the lab. The second 3560-X stays unplugged.
+
+| From | To | VLAN |
+| --- | --- | --- |
+| Internet cable | ASA `Gi0/0` | outside |
+| ASA `Gi0/1` | 3560-X `Gi0/1` | 10 |
+| ProLiant lab NIC | 3560-X `Gi0/2` | 10 |
+| Leviton row 1 | 3560-X `Gi0/3` | 10 |
+| Leviton row 2 | 3560-X `Gi0/4` | 10 |
+| Leviton row 3 | 3560-X `Gi0/5` | 10 |
+| Leviton row 4 | 3560-X `Gi0/6` | 10 |
+| Leviton row 5 | 3560-X `Gi0/7` | 10 |
+| Spare | 3560-X `Gi0/8`–`Gi0/12` | 10 |
+| ASA `Gi0/2` | any 3560-X `Gi0/13`–`Gi0/24` | 11 |
+
+`Gi0/1` through `Gi0/12` are access VLAN 10 (`name LAB`), with `spanning-tree portfast`. `Gi0/13` through `Gi0/24` are VLAN 11 access ports. Other PCs on VLAN 10 use switch ports 3 through 12.
+
+The switch hostname is `lab`. Management is SVI `Vlan10` at `10.0.253.251/24`, default gateway `10.0.253.254`. Routing stays off so the ASA remains the gateway. If VLAN 1 still has an address in `10.0.253.0/24`, clear it before putting `.251` on VLAN 10. Skip the setup wizard’s `TenGigabitEthernet1/1`. Console is the rear CONSOLE port, same PuTTY serial session as the ASA.
+
+`show vlan id 10` should list `Gi0/1` through `Gi0/12`. Plug only the ProLiant NIC that holds `10.0.253.1`. If that address lives on `br-ex` and `eno1` is a member of the bridge, the cable is in `eno1` and `PARENT_IFACE` is `br-ex`.
+
 Thirty Kali desktops in the browser, and thirty Ubuntu servers you reach with SSH. Names sit under `cybersecurity.lan` (`BASE_DOMAIN`). [Caddy](https://caddyserver.com/) terminates HTTPS for the Kali names. Ubuntu is not a desktop and not a Webtop. ubuntu01–ubuntu30 and ubuntuserver are Ubuntu Server containers on their macvlan addresses, with `sshd` on port 22. The shared image also has `apt`, `ping`, `ip`, `curl`, and `sudo`.
 
 Anyone who can open a Kali URL gets a desktop, and that desktop’s terminal has passwordless sudo inside the container. Keep this on a trusted LAN. Do not publish it on the internet.
