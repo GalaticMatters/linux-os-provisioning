@@ -295,14 +295,25 @@ def dual_lan(addr: str) -> list[str]:
     ]
 
 
-def lab_host_lines(domain: str, ubuntu: list[tuple[str, str]], extra: list[tuple[str, str]]) -> list[str]:
-    """Hosts entries so a desktop resolves ubuntuNN to the macvlan address.
+def lab_host_lines(
+    domain: str,
+    server: str,
+    kali: list[str],
+    ubuntu: list[tuple[str, str]],
+    extra: list[tuple[str, str]],
+) -> list[str]:
+    """Hosts entries so a desktop resolves names without dnsmasq on 10.0.253.1.
 
-    A macvlan endpoint does not reach the parent address 10.0.253.1, so
-    these containers do not use dnsmasq there. The same addresses dnsmasq
-    publishes are written here. Short names and the zone name both resolve.
+    A macvlan endpoint does not reach the parent address, so these
+    containers do not use dnsmasq there. Kali FQDNs point at SERVER_IP
+    (Caddy). Short kali01 stays off this list so Docker DNS still finds
+    the container for Caddy's https://kali01:3001 hop. Ubuntu short names
+    and FQDNs both point at the macvlan address.
     """
     lines = ["x-lab-hosts: &lab-hosts"]
+    lines.append(f'  - "{domain}:{server}"')
+    for name in kali + ["kali111", "ubuntu100", "ubuntu111"]:
+        lines.append(f'  - "{name}.{domain}:{server}"')
     for name, addr in list(ubuntu) + list(extra):
         lines.append(f'  - "{name}.{domain}:{addr}"')
         lines.append(f'  - "{name}:{addr}"')
@@ -358,6 +369,7 @@ def render_compose(
     ubuntu: list[tuple[str, str]],
     domain: str,
     extra: list[tuple[str, str]],
+    server: str,
 ) -> str:
     desktop_note = ", ".join(f"{name} {addr}" for name, addr in PERSISTENT_DESKTOPS)
     kali_addrs = fleet_kali_addresses(len(kali))
@@ -370,7 +382,7 @@ def render_compose(
         "# Caddy still reaches each kaliNN by container name on the desktop bridge.",
         f"# Persistent desktops on desktop and macvlan: {desktop_note}.",
         "# kali111 and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.",
-        "# extra_hosts maps ubuntuNN to the macvlan address on the Kali fleet and those five.",
+        "# extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.",
         "# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.",
         "# veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.",
         "# Cloudflare still opens",
@@ -382,7 +394,7 @@ def render_compose(
         "",
         "name: cybersecurity-lan",
         "",
-        *lab_host_lines(domain, ubuntu, extra),
+        *lab_host_lines(domain, server, kali, ubuntu, extra),
         "x-logging: &json-logs",
         "  driver: json-file",
         "  options:",
@@ -865,7 +877,7 @@ def main() -> int:
     if set(kali_addrs) & desktop_ips:
         raise SystemExit("Kali fleet addresses overlap the persistent desktop block")
 
-    write(root / "compose.yaml", render_compose(kali, ubuntu, domain, extra))
+    write(root / "compose.yaml", render_compose(kali, ubuntu, domain, extra, str(server)))
     write(root / "caddy" / "Caddyfile", render_caddy(kali, ["kali111", "ubuntu100", "ubuntu111"]))
     write(root / "caddy" / "site" / "index.html", render_index(root, domain, user, kali, ubuntu_count))
     write(root / "dns" / "records.conf", render_records(kali, ubuntu, extra))

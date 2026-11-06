@@ -6,7 +6,7 @@
 # Caddy still reaches each kaliNN by container name on the desktop bridge.
 # Persistent desktops on desktop and macvlan: kali111 10.0.253.50, ubuntu111 10.0.253.51, ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54.
 # kali111 and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.
-# extra_hosts maps ubuntuNN to the macvlan address on the Kali fleet and those five.
+# extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.
 # The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.
 # veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.
 # Cloudflare still opens
@@ -19,6 +19,40 @@
 name: cybersecurity-lan
 
 x-lab-hosts: &lab-hosts
+  - "cybersecurity.lan:10.0.253.1"
+  - "kali01.cybersecurity.lan:10.0.253.1"
+  - "kali02.cybersecurity.lan:10.0.253.1"
+  - "kali03.cybersecurity.lan:10.0.253.1"
+  - "kali04.cybersecurity.lan:10.0.253.1"
+  - "kali05.cybersecurity.lan:10.0.253.1"
+  - "kali06.cybersecurity.lan:10.0.253.1"
+  - "kali07.cybersecurity.lan:10.0.253.1"
+  - "kali08.cybersecurity.lan:10.0.253.1"
+  - "kali09.cybersecurity.lan:10.0.253.1"
+  - "kali10.cybersecurity.lan:10.0.253.1"
+  - "kali11.cybersecurity.lan:10.0.253.1"
+  - "kali12.cybersecurity.lan:10.0.253.1"
+  - "kali13.cybersecurity.lan:10.0.253.1"
+  - "kali14.cybersecurity.lan:10.0.253.1"
+  - "kali15.cybersecurity.lan:10.0.253.1"
+  - "kali16.cybersecurity.lan:10.0.253.1"
+  - "kali17.cybersecurity.lan:10.0.253.1"
+  - "kali18.cybersecurity.lan:10.0.253.1"
+  - "kali19.cybersecurity.lan:10.0.253.1"
+  - "kali20.cybersecurity.lan:10.0.253.1"
+  - "kali21.cybersecurity.lan:10.0.253.1"
+  - "kali22.cybersecurity.lan:10.0.253.1"
+  - "kali23.cybersecurity.lan:10.0.253.1"
+  - "kali24.cybersecurity.lan:10.0.253.1"
+  - "kali25.cybersecurity.lan:10.0.253.1"
+  - "kali26.cybersecurity.lan:10.0.253.1"
+  - "kali27.cybersecurity.lan:10.0.253.1"
+  - "kali28.cybersecurity.lan:10.0.253.1"
+  - "kali29.cybersecurity.lan:10.0.253.1"
+  - "kali30.cybersecurity.lan:10.0.253.1"
+  - "kali111.cybersecurity.lan:10.0.253.1"
+  - "ubuntu100.cybersecurity.lan:10.0.253.1"
+  - "ubuntu111.cybersecurity.lan:10.0.253.1"
   - "ubuntu01.cybersecurity.lan:10.0.253.11"
   - "ubuntu01:10.0.253.11"
   - "ubuntu02.cybersecurity.lan:10.0.253.12"
