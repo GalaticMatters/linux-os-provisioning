@@ -332,8 +332,20 @@ def render_persistent_kali(
     user_var: str = "DESKTOP_USER",
     password_var: str = "DESKTOP_PASSWORD",
     default_user: str = "van",
+    require_password: bool = False,
 ) -> list[str]:
-    """Persistent Kali desktop on desktop + macvlan. No fleet.reset label."""
+    """Persistent Kali desktop on desktop + macvlan. No fleet.reset label.
+
+    linuxserver Selkies only shows the browser login when PASSWORD is
+    non-empty. CUSTOM_USER alone does nothing. An empty interpolates to
+    PASSWORD= and the desktop opens with no prompt.
+    """
+    if require_password:
+        password_line = (
+            f'      PASSWORD: "${{{password_var}:?Set {password_var} in .env}}"'
+        )
+    else:
+        password_line = f"      PASSWORD: ${{{password_var}:-}}"
     return [
         f"  {name}:",
         f"    hostname: {name}",
@@ -350,7 +362,7 @@ def render_persistent_kali(
         "      TZ: ${TZ:-UTC}",
         "      SERVER_IP: ${SERVER_IP:-10.0.253.1}",
         f"      CUSTOM_USER: ${{{user_var}:-{default_user}}}",
-        f"      PASSWORD: ${{{password_var}:-}}",
+        password_line,
         f"      TITLE: {title}",
         "    volumes:",
         f"      - {name}-config:/config",
@@ -522,7 +534,12 @@ def render_compose(
         ]
     lines += render_persistent_kali("kali111", "Kali111")
     lines += render_persistent_kali(
-        "sang", "Sang", "SANG_USER", "SANG_PASSWORD", "sang"
+        "sang",
+        "Sang",
+        user_var="SANG_USER",
+        password_var="SANG_PASSWORD",
+        default_user="sang",
+        require_password=True,
     )
     lines += [
         "  ubuntu100:",

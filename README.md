@@ -66,8 +66,8 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `DEREK_PASSWORD` | Password for derek. No default. Put it only in `.env`. Do not commit it. |
 | `VYAS_USER` | Account on vyas. Default `vyas`. |
 | `VYAS_PASSWORD` | Password for vyas. No default. Put it only in `.env`. Do not commit it. |
-| `SANG_USER` | Account on sang. Default `sang`. |
-| `SANG_PASSWORD` | Password for sang. No default. Put it only in `.env`. Do not commit it. |
+| `SANG_USER` | Account on sang. Default `sang`. This is the Selkies browser-login username. |
+| `SANG_PASSWORD` | Password for sang. Required. Put it only in `.env`. Do not commit it. An empty value turns off the browser login, so sang opens with no prompt. kali111 prompts because `DESKTOP_PASSWORD` is set. Compose refuses to start sang until this is set. |
 
 `KALI_COUNT` and `UBUNTU_COUNT` default to 30. The repo already contains that render, so a copied `.env` can start all 60 without running the generator first.
 
@@ -220,8 +220,12 @@ On the ProLiant, from this repo:
 
 ```sh
 git pull
-# Set DEREK_PASSWORD, VYAS_PASSWORD, and SANG_PASSWORD in .env. Leave them empty in .env.example.
-# Do not commit the real passwords.
+# In .env on this host, not in .env.example and not committed:
+#   SANG_USER=sang
+#   SANG_PASSWORD=<the sang password>
+# Leave SANG_PASSWORD empty in .env.example. Do not commit the real passwords.
+# Recreate sang after that line is in .env. Selkies only shows the login
+# dialog when PASSWORD is non-empty. CUSTOM_USER alone does not prompt.
 docker compose up -d --force-recreate --no-deps derek vyas sang
 ```
 
@@ -516,6 +520,7 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **502 Bad gateway on derek or vyas.** Cloudflare reached the tunnel and nothing accepted HTTP on port 3000. `docker compose logs derek` should include `Mint login on http://0.0.0.0:3000` before apt finishes. `ERROR: apt-get update failed` or `ERROR: apt-get install failed` means packages did not install; the login page stays up. Origins stay `http://derek:3000` and `http://vyas:3000`.
 - **502 on ubuntu111.research101.stream, kali111.research101.stream, or sang.research101.stream.** The tunnel origin is HTTP `http://ubuntu111:3000`, `http://kali111:3000`, or `http://sang:3000`. Those containers are on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route. After `git pull`, `docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111`.
 - **derek or vyas is a blank page.** The public hostname must be service type HTTP, origin `http://derek:3000` or `http://vyas:3000`. RDP does not render in a browser. Replace an RDP route.
+- **sang opens with no password prompt.** `SANG_PASSWORD` is empty in `.env`, so Selkies disables HTTP basic auth. kali111 prompts because `DESKTOP_PASSWORD` is set. `CUSTOM_USER=sang` does not turn the dialog on by itself. Put `SANG_USER=sang` and `SANG_PASSWORD` in `.env` (the file Compose reads in the repo directory, not `.env.example`). Then `docker compose up -d --force-recreate --no-deps sang`. The browser should ask for `sang` and that password, the same dialog as kali111. Compose errors with `Set SANG_PASSWORD in .env` if the value is still empty.
 - **The Mint login is rejected.** `DEREK_PASSWORD` or `VYAS_PASSWORD` is empty, or the container was not recreated after the password changed. The entrypoint resets the password from `.env` on start. The same password is used for `sudo` after Cinnamon starts.
 - **Sign-in says the desktop did not start.** A correct password installs `tigervnc-standalone-server` (Xtigervnc) and `util-linux` (runuser) if apt has not finished. Port 3000 stays open during that install. `docker compose logs derek` should then contain `Xtigervnc and runuser are ready` and `Cinnamon started for derek` (`Cinnamon started for vyas` on that desktop).
 - **502 on `/vnc.html` after sign-in.** The login page waits until websockify answers `GET /vnc.html` before it redirects. That path is not answered with 502. The log line is `noVNC proxy is serving /vnc.html`, then `Cinnamon started for derek`. Port 3000 stays open while the proxy starts.

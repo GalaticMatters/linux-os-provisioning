@@ -644,7 +644,7 @@ services:
       TZ: ${TZ:-UTC}
       SERVER_IP: ${SERVER_IP:-10.0.253.1}
       CUSTOM_USER: ${SANG_USER:-sang}
-      PASSWORD: ${SANG_PASSWORD:-}
+      PASSWORD: "${SANG_PASSWORD:?Set SANG_PASSWORD in .env}"
       TITLE: Sang
     volumes:
       - sang-config:/config
