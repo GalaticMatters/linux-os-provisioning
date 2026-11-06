@@ -216,6 +216,19 @@ On the ProLiant, after `git pull`:
 
 `rebuild` builds `cybersecurity-ubuntu-ssh:1` once, then force-recreates ubuntu01–ubuntu30 and ubuntuserver onto that image. It does not touch the Kali fleet, the other desktops, Caddy, or dnsmasq. The 02:00 job still recreates only ubuntu01–ubuntu30.
 
+## Lab ASA
+
+The lab ASA (Cisco ASA 5525-X) sits in front of the ProLiant. It has two inside networks:
+
+| Inside network | VLAN |
+| --- | --- |
+| `10.0.253.0` | 10 |
+| `10.0.254.0` | 11 |
+
+`10.0.253.0/24` is `LAN_SUBNET`. The ProLiant’s `SERVER_IP` is `10.0.253.1` on `PARENT_IFACE` (`br-ex` or `eno1`). `cybersecurity-macvlan` uses that parent, so the Kali, Ubuntu, and desktop addresses in the Macvlan section are on VLAN 10. Those notes already leave `10.0.253.254` as the gateway on that subnet. `10.0.254.0` is the second inside network (VLAN 11). Container addresses in this repo stay on `10.0.253.0/24`.
+
+The ASA interface name, security level, and dhcpd range for each inside network still have to match the ASA. Those three values are not recorded here.
+
 ## Macvlan
 
 Ubuntu is attached to the `cybersecurity-macvlan` network (`driver: macvlan`, parent `PARENT_IFACE`). Each service has a fixed `ipv4_address`, and dnsmasq (and `dns/hosts.example`) has a matching A record.
