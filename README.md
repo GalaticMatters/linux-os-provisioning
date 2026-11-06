@@ -220,14 +220,18 @@ On the ProLiant, after `git pull`:
 
 The lab ASA (Cisco ASA 5525-X) sits in front of the ProLiant. It has two inside networks:
 
-| Inside network | VLAN |
-| --- | --- |
-| `10.0.253.0` | 10 |
-| `10.0.254.0` | 11 |
+| Inside network | VLAN | ASA port | Address | Security level |
+| --- | --- | --- | --- | --- |
+| `10.0.253.0/24` | 10 | `GigabitEthernet0/1` (`nameif inside`) | `10.0.253.254/24` | 100 |
+| `10.0.254.0/24` | 11 | `GigabitEthernet0/2` | `10.0.254.254/24` | 100 |
 
-`10.0.253.0/24` is `LAN_SUBNET`. The ProLiant’s `SERVER_IP` is `10.0.253.1` on `PARENT_IFACE` (`br-ex` or `eno1`). `cybersecurity-macvlan` uses that parent, so the Kali, Ubuntu, and desktop addresses in the Macvlan section are on VLAN 10. Those notes already leave `10.0.253.254` as the gateway on that subnet. `10.0.254.0` is the second inside network (VLAN 11). Container addresses in this repo stay on `10.0.253.0/24`.
+`GigabitEthernet0/1` stays in switch port 1. That link is the existing lab VLAN. `GigabitEthernet0/2` plugs into any switch port from 13 through 24, which is VLAN 11.
 
-The ASA interface name, security level, and dhcpd range for each inside network still have to match the ASA. Those three values are not recorded here.
+`10.0.253.0/24` is `LAN_SUBNET`. The ProLiant’s `SERVER_IP` is `10.0.253.1` on `PARENT_IFACE` (`br-ex` or `eno1`). `cybersecurity-macvlan` uses that parent, so the Kali, Ubuntu, and desktop addresses in the Macvlan section are on VLAN 10. The ASA is the gateway at `10.0.253.254`. `dhcpd` on `inside` hands out `10.0.253.100`–`10.0.253.200` with DNS `10.0.253.1`. A lab PC took `10.0.253.101`. Lab NAT and ICMP inspection are on, so that PC can ping `8.8.8.8`.
+
+VLAN 11 is `object network VLAN11` (`subnet 10.0.254.0 255.255.255.0`). The ASA is the gateway and DHCP server there: `10.0.254.100`–`10.0.254.200`, DNS `1.1.1.1` and `8.8.8.8`. Container addresses in this repo stay on `10.0.253.0/24`.
+
+Outside is `GigabitEthernet0/0` (`nameif outside`, `ip address dhcp setroute`). `Management0/0` was administratively down at `192.168.1.1`. That address overlaps the outside LAN, so it has to be removed before outside DHCP in `192.168.1.0/24` will stay bound.
 
 ## Macvlan
 
