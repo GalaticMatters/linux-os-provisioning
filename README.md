@@ -1,5 +1,22 @@
 # Cybersecurity LAN
 
+## Lab ASA
+
+The lab ASA (Cisco ASA 5525-X) sits in front of the ProLiant. It has two inside networks:
+
+| Inside network | VLAN | ASA port | Address | Security level |
+| --- | --- | --- | --- | --- |
+| `10.0.253.0/24` | 10 | `GigabitEthernet0/1` (`nameif inside`) | `10.0.253.254/24` | 100 |
+| `10.0.254.0/24` | 11 | `GigabitEthernet0/2` | `10.0.254.254/24` | 100 |
+
+`GigabitEthernet0/1` stays in switch port 1. That link is the existing lab VLAN. `GigabitEthernet0/2` plugs into any switch port from 13 through 24, which is VLAN 11.
+
+`10.0.253.0/24` is `LAN_SUBNET`. The ProLiant’s `SERVER_IP` is `10.0.253.1` on `PARENT_IFACE` (`br-ex` or `eno1`). `cybersecurity-macvlan` uses that parent, so the Kali, Ubuntu, and desktop addresses in the Macvlan section are on VLAN 10. The ASA is the gateway at `10.0.253.254`. `dhcpd` on `inside` hands out `10.0.253.100`–`10.0.253.200` with DNS `10.0.253.1`. A lab PC took `10.0.253.101`. Lab NAT and ICMP inspection are on, so that PC can ping `8.8.8.8`.
+
+VLAN 11 is `object network VLAN11` (`subnet 10.0.254.0 255.255.255.0`). The ASA is the gateway and DHCP server there: `10.0.254.100`–`10.0.254.200`, DNS `1.1.1.1` and `8.8.8.8`. Container addresses in this repo stay on `10.0.253.0/24`.
+
+Outside is `GigabitEthernet0/0` (`nameif outside`, `ip address dhcp setroute`). `Management0/0` was administratively down at `192.168.1.1`. That address overlaps the outside LAN, so it has to be removed before outside DHCP in `192.168.1.0/24` will stay bound.
+
 Thirty Kali desktops in the browser, and thirty Ubuntu servers you reach with SSH. Names sit under `cybersecurity.lan` (`BASE_DOMAIN`). [Caddy](https://caddyserver.com/) terminates HTTPS for the Kali names. Ubuntu is not a desktop and not a Webtop. ubuntu01–ubuntu30 and ubuntuserver are Ubuntu Server containers on their macvlan addresses, with `sshd` on port 22. The shared image also has `apt`, `ping`, `ip`, `curl`, and `sudo`.
 
 Anyone who can open a Kali URL gets a desktop, and that desktop’s terminal has passwordless sudo inside the container. Keep this on a trusted LAN. Do not publish it on the internet.
@@ -215,23 +232,6 @@ On the ProLiant, after `git pull`:
 ```
 
 `rebuild` builds `cybersecurity-ubuntu-ssh:1` once, then force-recreates ubuntu01–ubuntu30 and ubuntuserver onto that image. It does not touch the Kali fleet, the other desktops, Caddy, or dnsmasq. The 02:00 job still recreates only ubuntu01–ubuntu30.
-
-## Lab ASA
-
-The lab ASA (Cisco ASA 5525-X) sits in front of the ProLiant. It has two inside networks:
-
-| Inside network | VLAN | ASA port | Address | Security level |
-| --- | --- | --- | --- | --- |
-| `10.0.253.0/24` | 10 | `GigabitEthernet0/1` (`nameif inside`) | `10.0.253.254/24` | 100 |
-| `10.0.254.0/24` | 11 | `GigabitEthernet0/2` | `10.0.254.254/24` | 100 |
-
-`GigabitEthernet0/1` stays in switch port 1. That link is the existing lab VLAN. `GigabitEthernet0/2` plugs into any switch port from 13 through 24, which is VLAN 11.
-
-`10.0.253.0/24` is `LAN_SUBNET`. The ProLiant’s `SERVER_IP` is `10.0.253.1` on `PARENT_IFACE` (`br-ex` or `eno1`). `cybersecurity-macvlan` uses that parent, so the Kali, Ubuntu, and desktop addresses in the Macvlan section are on VLAN 10. The ASA is the gateway at `10.0.253.254`. `dhcpd` on `inside` hands out `10.0.253.100`–`10.0.253.200` with DNS `10.0.253.1`. A lab PC took `10.0.253.101`. Lab NAT and ICMP inspection are on, so that PC can ping `8.8.8.8`.
-
-VLAN 11 is `object network VLAN11` (`subnet 10.0.254.0 255.255.255.0`). The ASA is the gateway and DHCP server there: `10.0.254.100`–`10.0.254.200`, DNS `1.1.1.1` and `8.8.8.8`. Container addresses in this repo stay on `10.0.253.0/24`.
-
-Outside is `GigabitEthernet0/0` (`nameif outside`, `ip address dhcp setroute`). `Management0/0` was administratively down at `192.168.1.1`. That address overlaps the outside LAN, so it has to be removed before outside DHCP in `192.168.1.0/24` will stay bound.
 
 ## Macvlan
 
