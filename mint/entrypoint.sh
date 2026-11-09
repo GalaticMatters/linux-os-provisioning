@@ -23,7 +23,7 @@ home="/home/${user}"
 log "Mint entrypoint starting"
 
 if [ -z "$user" ] || [ "$user" = "root" ] || ! printf '%s' "$user" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$'; then
-  log "ERROR: MINT_USER must be a lowercase account name other than root (set DEREK_USER or VYAS_USER)"
+  log "ERROR: MINT_USER must be a lowercase account name other than root (set VYAS_USER)"
   user=""
   home=""
 fi

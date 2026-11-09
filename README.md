@@ -62,8 +62,8 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `SSH_PUBLIC_KEY` or `SSH_PASSWORD` | At least one. One single-line OpenSSH public key, and/or a single-line password. |
 | `DESKTOP_USER` | Account on kali111, ubuntu100, ubuntu111, and ubuntuserver. Default `van`. Not used by derek, vyas, or sang. |
 | `DESKTOP_PASSWORD` | Password for that account. Put it only in `.env`. Do not commit it. |
-| `DEREK_USER` | Account on derek. Default `derek`. |
-| `DEREK_PASSWORD` | Password for derek. No default. Put it only in `.env`. Do not commit it. |
+| `DEREK_USER` | Account on derek. Default `derek`. Selkies browser-login username. |
+| `DEREK_PASSWORD` | Password for derek. Required. Put it only in `.env`. Do not commit it. Same role as `SANG_PASSWORD`: an empty value turns off the Kali login prompt. Compose refuses to start derek until this is set. |
 | `VYAS_USER` | Account on vyas. Default `vyas`. |
 | `VYAS_PASSWORD` | Password for vyas. No default. Put it only in `.env`. Do not commit it. |
 | `SANG_USER` | Account on sang. Default `sang`. This is the Selkies browser-login username. |
@@ -79,7 +79,8 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `https://kali01.cybersecurity.lan` … `kali30.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.55` … `10.0.253.84` | Kali KDE in the browser. Also on the `desktop` bridge so Caddy can reach `kaliNN:3001`. Ping and SSH to Ubuntu from the desktop. |
 | `ssh student@ubuntu01.cybersecurity.lan` … `ubuntu30` | `10.0.253.11` … `10.0.253.40` | Ubuntu Server, one macvlan address each, SSH port 22. `apt`, `ping`, and `ip` are installed. |
 | `ssh van@ubuntuserver.cybersecurity.lan` | `10.0.253.41` | Same image as ubuntu01–ubuntu30. Not part of `lab.sh on`/`off`, and not recreated at 02:00. |
-| `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000`, macvlan `10.0.253.53` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
+| `https://derek.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.53` | Persistent Kali, same image as sang and kali111. Sign in as `derek`. Not part of `lab.sh on`/`off`, and not recreated at 02:00. |
+| `https://derek.research101.stream` | Cloudflare HTTP `http://derek:3000`, macvlan `10.0.253.53` | Same desktop. Existing tunnel hostname. Origin stays `http://derek:3000`. |
 | `https://vyas.research101.stream` | Cloudflare HTTP `http://vyas:3000`, macvlan `10.0.253.54` | Persistent Linux Mint Cinnamon. Sign in, then Firefox and sudo. Not wiped at 02:00. |
 | `https://kali111.research101.stream` | Cloudflare HTTP `http://kali111:3000`, macvlan `10.0.253.50` | Persistent Kali on the `desktop` bridge, same network as cloudflared. Also on the macvlan, so it can ping `10.0.253.11`. |
 | `https://sang.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.85` | Persistent Kali, same image as kali111. Sign in as `sang`. Not part of `lab.sh on`/`off`, and not recreated at 02:00. |
@@ -90,11 +91,11 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 
 Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. Browsers stay on Caddy. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the Kali container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
 
-Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10.0.253.55` for kali01 through `10.0.253.84` for kali30. kali111 (`10.0.253.50`), sang (`10.0.253.85`), and ubuntu111 (`10.0.253.51`) stay on that bridge with cloudflared and are also on the macvlan, so the tunnel opens `http://kali111:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. The desktop bridge keeps the default route. Ping and SSH to `ubuntu01.cybersecurity.lan` (`10.0.253.11`) use the macvlan, from kali01–kali30, kali111, sang, ubuntu111, ubuntu100, derek, or vyas.
+Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10.0.253.55` for kali01 through `10.0.253.84` for kali30. kali111 (`10.0.253.50`), derek (`10.0.253.53`), sang (`10.0.253.85`), and ubuntu111 (`10.0.253.51`) stay on that bridge with cloudflared and are also on the macvlan, so the tunnel opens `http://kali111:3000`, `http://derek:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. The desktop bridge keeps the default route. Ping and SSH to `ubuntu01.cybersecurity.lan` (`10.0.253.11`) use the macvlan, from kali01–kali30, kali111, derek, sang, ubuntu111, ubuntu100, or vyas.
 
 ## Lab interface
 
-`veth-peer` is a second cable with no address and no default route. kali01's `veth-peer` is the other end of ubuntu01's `veth-peer`. kali02 is cabled only to ubuntu02, through kali30 to ubuntu30, and kali111 to ubuntu111. It is not the path to `10.0.253.11`. ubuntuserver, ubuntu100, derek, and vyas do not have it.
+`veth-peer` is a second cable with no address and no default route. kali01's `veth-peer` is the other end of ubuntu01's `veth-peer`. kali02 is cabled only to ubuntu02, through kali30 to ubuntu30, and kali111 to ubuntu111. It is not the path to `10.0.253.11`. ubuntuserver, ubuntu100, derek, sang, and vyas do not have it.
 
 kali111 and ubuntu111 keep that cable until those two containers are recreated. The 02:00 job recreates kali01–kali30 and ubuntu01–ubuntu30, and the cable is deleted with the old network namespace. After that recreate, the job runs `scripts/lab-veth.sh` again. A pair that already has `veth-peer` on both sides is left alone, so this does not reset the 111 lab. With the fleet up, put the student cables back now:
 
@@ -168,13 +169,19 @@ docker compose pull kali01
 
 Every Kali service uses the same image, so pulling one updates the image for the fleet. The reset recreates the containers onto it.
 
-## Mint desktops
+## Persistent Kali: derek and sang
 
-`derek` and `vyas` are persistent Linux Mint Cinnamon desktops. They sit on the Compose network `desktop` (`cybersecurity-desktop`), so the existing `cloudflared` container can reach them by service name (`http://derek:3000`, `http://vyas:3000`). They also have macvlan addresses `10.0.253.53` (derek) and `10.0.253.54` (vyas). The bridge keeps the default route. The macvlan address is how the desktop reaches the Ubuntu servers.
+`derek` is the same Kali image as `sang` and `kali111` (`lscr.io/linuxserver/kali-linux:latest`). It is not Linux Mint. It sits on the Compose network `desktop` (`cybersecurity-desktop`), so `cloudflared` reaches it as `http://derek:3000`, and on macvlan at `10.0.253.53`. Caddy serves `https://derek.cybersecurity.lan` to `https://derek:3001`. Sign in as `DEREK_USER` (default `derek`). The password is `DEREK_PASSWORD`. An empty password turns off the Selkies login, same as sang.
 
-`lscr.io/linuxserver/webtop` has no Mint tag. Checked again on 29 October 2026: Docker Hub tag queries for `mint`, `cinnamon`, `linuxmint`, and `lmde` each returned zero tags. `linuxserver/rdesktop` has no Mint tag either. These two desktops use the published image `dockerscripts/linuxmint:cinnamon` (linux/amd64 manifest `sha256:02f4a0cb1561907d22865e2ed075c9c198443557d5884d316d3bfe0d3c268825`). The image build installs `mint-meta-cinnamon` and `firefox` (also Epiphany, Falkon, and Konqueror). That image does not serve HTTP. [`mint/entrypoint.sh`](mint/entrypoint.sh) serves a login page at HTTP port **3000** before it installs noVNC and TigerVNC. If apt, VNC, or Cinnamon fails, the error is printed and port 3000 stays open. The username is `DEREK_USER` or `VYAS_USER`. The password is `DEREK_PASSWORD` or `VYAS_PASSWORD`. Cinnamon starts after that password is accepted. xrdp stays masked, so the browser does not use RDP. The entrypoint puts the account in the `sudo` group. `sudo` asks for the same password.
+The named volume `cybersecurity-derek-config` used to be a Mint home at `/home/derek`. Kali mounts it at `/config`. After switching the image, remove that volume before the first Kali start, or the old Mint files sit where Selkies expects its config.
 
-derek and vyas do not share `DESKTOP_USER` or `DESKTOP_PASSWORD`. The login page asks for `DEREK_USER` (default `derek`) and `DEREK_PASSWORD`, or `VYAS_USER` (default `vyas`) and `VYAS_PASSWORD`. Neither password has a default. The entrypoint writes that password again on every start. An empty password cannot sign in. Homes are the named volumes `cybersecurity-derek-config` and `cybersecurity-vyas-config`, mounted at `/home/$DEREK_USER` and `/home/$VYAS_USER`. Neither service has `fleet.reset: "true"`, so the 02:00 job does not recreate them.
+## Mint desktop
+
+`vyas` is a persistent Linux Mint Cinnamon desktop. It sits on the Compose network `desktop` (`cybersecurity-desktop`), so the existing `cloudflared` container can reach it by service name (`http://vyas:3000`). It also has macvlan address `10.0.253.54`. The bridge keeps the default route. The macvlan address is how the desktop reaches the Ubuntu servers.
+
+`lscr.io/linuxserver/webtop` has no Mint tag. Checked again on 29 October 2026: Docker Hub tag queries for `mint`, `cinnamon`, `linuxmint`, and `lmde` each returned zero tags. `linuxserver/rdesktop` has no Mint tag either. This desktop uses the published image `dockerscripts/linuxmint:cinnamon` (linux/amd64 manifest `sha256:02f4a0cb1561907d22865e2ed075c9c198443557d5884d316d3bfe0d3c268825`). The image build installs `mint-meta-cinnamon` and `firefox` (also Epiphany, Falkon, and Konqueror). That image does not serve HTTP. [`mint/entrypoint.sh`](mint/entrypoint.sh) serves a login page at HTTP port **3000** before it installs noVNC and TigerVNC. If apt, VNC, or Cinnamon fails, the error is printed and port 3000 stays open. The username is `VYAS_USER`. The password is `VYAS_PASSWORD`. Cinnamon starts after that password is accepted. xrdp stays masked, so the browser does not use RDP. The entrypoint puts the account in the `sudo` group. `sudo` asks for the same password.
+
+vyas does not share `DESKTOP_USER` or `DESKTOP_PASSWORD`. The login page asks for `VYAS_USER` (default `vyas`) and `VYAS_PASSWORD`. The password has no default. The entrypoint writes that password again on every start. An empty password cannot sign in. Home is the named volume `cybersecurity-vyas-config`, mounted at `/home/$VYAS_USER`. The service has no `fleet.reset: "true"` label, so the 02:00 job does not recreate it.
 
 Do not add a second tunnel token. `cloudflared` (profile `public`) is the tunnel already in this Compose file. In the Cloudflare Zero Trust dashboard, on that same tunnel, replace the RDP routes. A browser cannot render RDP, and HTTP pointed at `rdp://` is a blank page. The service type is **HTTP**:
 
@@ -187,7 +194,7 @@ Do not add a second tunnel token. `cloudflared` (profile `public`) is the tunnel
 | `sang.research101.stream` | `http://sang:3000` |
 | `ssh.research101.stream` | `ssh://host.docker.internal:22` |
 
-`/` is the login page. After sign-in, Firefox is in the Cinnamon menu. `sudo` in a terminal asks for the same password.
+On vyas, `/` is the Mint login page. After sign-in, Firefox is in the Cinnamon menu. `sudo` in a terminal asks for the same password. On derek, `/` is the Selkies Kali desktop. The browser login is HTTP basic auth when `DEREK_PASSWORD` is set.
 
 ## SSH to the ProLiant
 
@@ -221,17 +228,27 @@ On the ProLiant, from this repo:
 ```sh
 git pull
 # In .env on this host, not in .env.example and not committed:
+#   DEREK_USER=derek
+#   DEREK_PASSWORD=<the derek password>
 #   SANG_USER=sang
 #   SANG_PASSWORD=<the sang password>
-# Leave SANG_PASSWORD empty in .env.example. Do not commit the real passwords.
-# Recreate sang after that line is in .env. Selkies only shows the login
-# dialog when PASSWORD is non-empty. CUSTOM_USER alone does not prompt.
-docker compose up -d --force-recreate --no-deps derek vyas sang
+# Leave those passwords empty in .env.example. Do not commit the real passwords.
+# Selkies only shows the login dialog when PASSWORD is non-empty.
+# derek is now Kali. The old Mint volume cannot be reused as /config.
+docker compose stop derek
+docker compose rm -f derek
+docker volume rm cybersecurity-derek-config
+docker compose up -d --no-deps derek
+docker compose restart caddy
+# If bundled DNS is running, pick up derek.cybersecurity.lan:
+./scripts/lab.sh dns-off
+./scripts/lab.sh dns-on
+docker compose up -d --force-recreate --no-deps vyas sang
 ```
 
-`docker compose up -d --force-recreate --no-deps derek vyas` recreates only those two containers so they pick up the account and the home mount. The named volumes stay. This is not the 02:00 fleet reset. `lab.sh on` does not start or recreate them. It only runs `docker compose up -d` for kali01–kali30 and ubuntu01–ubuntu30. `lab.sh off` leaves derek and vyas running (and kali111, sang, and ubuntu111). `lab.sh extra-containers-on` starts only derek, vyas, kali111, ubuntu111, and sang. `lab.sh extra-containers-off` stops only those five. Neither starts the fleet or dnsmasq, and neither recreates unrelated services. `lab.sh on` does not start or stop dnsmasq or cloudflared. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them.
+`docker compose up -d --force-recreate --no-deps vyas` recreates only that Mint container so it picks up the account and the home mount. The named volume stays. Recreating derek without removing `cybersecurity-derek-config` first leaves Mint home files where Kali expects Selkies config. This is not the 02:00 fleet reset. `lab.sh on` does not start or recreate them. It only runs `docker compose up -d` for kali01–kali30 and ubuntu01–ubuntu30. `lab.sh off` leaves derek and vyas running (and kali111, sang, and ubuntu111). `lab.sh extra-containers-on` starts only derek, vyas, kali111, ubuntu111, and sang. `lab.sh extra-containers-off` stops only those five. Neither starts the fleet or dnsmasq, and neither recreates unrelated services. `lab.sh on` does not start or stop dnsmasq or cloudflared. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them. The existing `derek.research101.stream` origin `http://derek:3000` stays valid.
 
-The containers run systemd so Cinnamon and the HTTP desktop can start. They stay privileged because systemd needs that to bring the session up. They do not set `cgroup: host` and they do not mount the host `/sys/fs/cgroup`. A host cgroup namespace makes the container exit when another container stops. They stay on the `desktop` network and on the macvlan LAN. The first start installs noVNC, so it takes longer than a later start. `./scripts/lab.sh on` does not recreate them.
+vyas runs systemd so Cinnamon and the HTTP desktop can start. It stays privileged because systemd needs that to bring the session up. It does not set `cgroup: host` and it does not mount the host `/sys/fs/cgroup`. A host cgroup namespace makes the container exit when another container stops. It stays on the `desktop` network and on the macvlan LAN. The first start installs noVNC, so it takes longer than a later start. derek is the Kali image, not privileged, same as sang. `./scripts/lab.sh on` does not recreate them.
 
 ## SSH
 
@@ -296,13 +313,13 @@ Persistent desktops, same idea, different addresses:
 | kali111 | `10.0.253.50` | `http://kali111:3000` on the `desktop` bridge |
 | ubuntu111 | `10.0.253.51` | `http://ubuntu111:3000` on the `desktop` bridge |
 | ubuntu100 | `10.0.253.52` | `ubuntu100` |
-| derek | `10.0.253.53` | `http://derek:3000` |
+| derek | `10.0.253.53` | `http://derek:3000` on the `desktop` bridge |
 | vyas | `10.0.253.54` | `http://vyas:3000` |
 | sang | `10.0.253.85` | `http://sang:3000` on the `desktop` bridge |
 
-Those addresses are not `10.0.253.1`, not the gateway `10.0.253.254`, not `10.0.253.2`–`10.0.253.10`, and not `10.0.253.11`–`10.0.253.41`. The bridge keeps the default route (`gw_priority`), so Cloudflare opens `http://derek:3000`, `http://vyas:3000`, `http://kali111:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. Caddy still opens `https://kali111:3001` and `https://sang:3001` for the `.cybersecurity.lan` names.
+Those addresses are not `10.0.253.1`, not the gateway `10.0.253.254`, not `10.0.253.2`–`10.0.253.10`, and not `10.0.253.11`–`10.0.253.41`. The bridge keeps the default route (`gw_priority`), so Cloudflare opens `http://derek:3000`, `http://vyas:3000`, `http://kali111:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. Caddy still opens `https://kali111:3001`, `https://derek:3001`, and `https://sang:3001` for the `.cybersecurity.lan` names.
 
-A macvlan interface does not deliver packets to the parent address `10.0.253.1`, so the macvlan desktops do not send DNS to dnsmasq there. kali111, sang, and ubuntu111 are on the macvlan and on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route (`gw_priority`), so Cloudflare still opens `http://kali111:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. kali111 and sang still add a route for `SERVER_IP` via that bridge, so `ssh` to `10.0.253.1` reaches sshd on the ProLiant. Recreate them after pulling: `docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111`. Compose writes the Ubuntu server records into each desktop’s hosts file (`extra_hosts`). `ubuntu01` and `ubuntu01.cybersecurity.lan` both resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40` and `ubuntuserver` at `10.0.253.41`. The same addresses are in `dns/records.conf`.
+A macvlan interface does not deliver packets to the parent address `10.0.253.1`, so the macvlan desktops do not send DNS to dnsmasq there. kali111, derek, sang, and ubuntu111 are on the macvlan and on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route (`gw_priority`), so Cloudflare still opens `http://kali111:3000`, `http://derek:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. kali111, derek, and sang still add a route for `SERVER_IP` via that bridge, so `ssh` to `10.0.253.1` reaches sshd on the ProLiant. Recreate them after pulling: `docker compose up -d --force-recreate --no-deps kali111 derek sang ubuntu111`. Compose writes the Ubuntu server records into each desktop’s hosts file (`extra_hosts`). `ubuntu01` and `ubuntu01.cybersecurity.lan` both resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40` and `ubuntuserver` at `10.0.253.41`. The same addresses are in `dns/records.conf`.
 
 From a terminal on kali111, sang, ubuntu111, ubuntu100, derek, or vyas:
 
@@ -463,7 +480,7 @@ Recreate replaces the container.
 
 - Kali home is a tmpfs on `/config`. The new container has an empty home. Packages written into the image layer rather than the home are discarded too.
 - Ubuntu has no volume. The writable layer goes away, including the account, `authorized_keys`, and the SSH host keys. The entrypoint creates the account again from `.env` and generates new host keys. `apt`, `ping`, `ip`, `curl`, and `sudo` stay, because they are in the image.
-- derek, vyas, kali111, and sang are not labeled `fleet.reset`. The job does not recreate them. `cybersecurity-derek-config`, `cybersecurity-vyas-config`, `cybersecurity-kali111-config`, and `cybersecurity-sang-config` stay.
+- derek, vyas, kali111, and sang are not labeled `fleet.reset`. The job does not recreate them. `cybersecurity-derek-config`, `cybersecurity-vyas-config`, `cybersecurity-kali111-config`, and `cybersecurity-sang-config` stay. After switching derek from Mint to Kali, remove `cybersecurity-derek-config` once so the first Kali start is a clean `/config`.
 
 Caddy, dnsmasq, and the scheduler keep running. The scheduler is not recreated (that would kill the job). It mounts the Docker socket and runs as root, so it can control the daemon.
 
@@ -480,8 +497,8 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | Path | Role |
 | --- | --- |
 | `compose.yaml` | Generated. 30 Kali, 30 Ubuntu, persistent desktops, Caddy, dnsmasq, scheduler, cloudflared. `mem_limit: 4g` on every service. Desktops keep `shm_size: "1gb"`. |
-| `scripts/render.py` | Rebuilds the fleet files from `.env`, including derek and vyas |
-| `mint/entrypoint.sh` | Creates the derek or vyas account, grants sudo, requires that password on HTTP port 3000, then starts Cinnamon |
+| `scripts/render.py` | Rebuilds the fleet files from `.env`, including derek (Kali) and vyas (Mint) |
+| `mint/entrypoint.sh` | Creates the vyas account, grants sudo, requires that password on HTTP port 3000, then starts Cinnamon |
 | `.env.example` | Domain, timezone, NIC, subnet, counts, SSH placeholders |
 | `caddy/Caddyfile` | Generated. Internal CA and one site per Kali desktop |
 | `caddy/site/index.html` | Generated page on the apex name |
@@ -496,7 +513,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 
 `linuxserver/kali-linux:latest` is a Selkies web desktop (KDE, HTTPS on 3001). Checked on Docker Hub on 21 October 2026: digest `sha256:bc00b18887b5b263c03a52282867ac747d5e2a039f93969bb7e3d31b618833a6`, about 4.8 GB. `linuxserver/webtop` has no Kali tag and no Mint tag (checked 29 October 2026).
 
-`derek` and `vyas` use `dockerscripts/linuxmint:cinnamon` (Linux Mint Cinnamon, Firefox). The image has no HTTP port, so the entrypoint adds noVNC on port 3000. Registry index digest `sha256:094170fed2aaa379cd8c85f48fbf395dd7bfc2b19511b73f037cc340fe414342`. The linux/amd64 manifest is `sha256:02f4a0cb1561907d22865e2ed075c9c198443557d5884d316d3bfe0d3c268825`, pushed 26 October 2026.
+`derek` uses the same `linuxserver/kali-linux:latest` image as sang and kali111. `vyas` uses `dockerscripts/linuxmint:cinnamon` (Linux Mint Cinnamon, Firefox). The Mint image has no HTTP port, so the entrypoint adds noVNC on port 3000. Registry index digest `sha256:094170fed2aaa379cd8c85f48fbf395dd7bfc2b19511b73f037cc340fe414342`. The linux/amd64 manifest is `sha256:02f4a0cb1561907d22865e2ed075c9c198443557d5884d316d3bfe0d3c268825`, pushed 26 October 2026.
 
 Ubuntu is a local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04` with `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, and `sudo`. `apt`, `ping`, and `ip` are on the image. ubuntu01–ubuntu30 and ubuntuserver use it. It is not a browser desktop.
 
@@ -517,10 +534,11 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **502 from Caddy.** That Kali container is still starting, or the image is still downloading. `docker compose logs kali01`.
 - **Page loads, black screen.** The browser is not on HTTPS, or something is stripping WebSocket upgrades. Caddy forwards them.
 - **Reset did not run.** `docker compose logs scheduler` should show the timezone at start and a `reset:` line after 02:00. `docker compose exec scheduler date` should match `TZ`.
-- **502 Bad gateway on derek or vyas.** Cloudflare reached the tunnel and nothing accepted HTTP on port 3000. `docker compose logs derek` should include `Mint login on http://0.0.0.0:3000` before apt finishes. `ERROR: apt-get update failed` or `ERROR: apt-get install failed` means packages did not install; the login page stays up. Origins stay `http://derek:3000` and `http://vyas:3000`.
-- **502 on ubuntu111.research101.stream, kali111.research101.stream, or sang.research101.stream.** The tunnel origin is HTTP `http://ubuntu111:3000`, `http://kali111:3000`, or `http://sang:3000`. Those containers are on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route. After `git pull`, `docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111`.
+- **502 Bad gateway on vyas.** Cloudflare reached the tunnel and nothing accepted HTTP on port 3000. `docker compose logs vyas` should include `Mint login on http://0.0.0.0:3000` before apt finishes. `ERROR: apt-get update failed` or `ERROR: apt-get install failed` means packages did not install; the login page stays up. Origin stays `http://vyas:3000`.
+- **502 on ubuntu111.research101.stream, kali111.research101.stream, derek.research101.stream, or sang.research101.stream.** The tunnel origin is HTTP `http://ubuntu111:3000`, `http://kali111:3000`, `http://derek:3000`, or `http://sang:3000`. Those containers are on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route. After `git pull`, `docker compose up -d --force-recreate --no-deps kali111 derek sang ubuntu111`. For derek after the Mint-to-Kali switch, remove `cybersecurity-derek-config` first.
 - **derek or vyas is a blank page.** The public hostname must be service type HTTP, origin `http://derek:3000` or `http://vyas:3000`. RDP does not render in a browser. Replace an RDP route.
 - **sang opens with no password prompt.** `SANG_PASSWORD` is empty in `.env`, so Selkies disables HTTP basic auth. kali111 prompts because `DESKTOP_PASSWORD` is set. `CUSTOM_USER=sang` does not turn the dialog on by itself. Put `SANG_USER=sang` and `SANG_PASSWORD` in `.env` (the file Compose reads in the repo directory, not `.env.example`). Then `docker compose up -d --force-recreate --no-deps sang`. The browser should ask for `sang` and that password, the same dialog as kali111. Compose errors with `Set SANG_PASSWORD in .env` if the value is still empty.
-- **The Mint login is rejected.** `DEREK_PASSWORD` or `VYAS_PASSWORD` is empty, or the container was not recreated after the password changed. The entrypoint resets the password from `.env` on start. The same password is used for `sudo` after Cinnamon starts.
-- **Sign-in says the desktop did not start.** A correct password installs `tigervnc-standalone-server` (Xtigervnc) and `util-linux` (runuser) if apt has not finished. Port 3000 stays open during that install. `docker compose logs derek` should then contain `Xtigervnc and runuser are ready` and `Cinnamon started for derek` (`Cinnamon started for vyas` on that desktop).
-- **502 on `/vnc.html` after sign-in.** The login page waits until websockify answers `GET /vnc.html` before it redirects. That path is not answered with 502. The log line is `noVNC proxy is serving /vnc.html`, then `Cinnamon started for derek`. Port 3000 stays open while the proxy starts.
+- **derek opens with no password prompt.** `DEREK_PASSWORD` is empty in `.env`, so Selkies disables HTTP basic auth. Put `DEREK_USER=derek` and `DEREK_PASSWORD` in `.env`, remove the old Mint volume if this is the first Kali start, then `docker compose up -d --force-recreate --no-deps derek`. Compose errors with `Set DEREK_PASSWORD in .env` if the value is still empty.
+- **The Mint login is rejected.** `VYAS_PASSWORD` is empty, or the container was not recreated after the password changed. The entrypoint resets the password from `.env` on start. The same password is used for `sudo` after Cinnamon starts.
+- **Sign-in says the desktop did not start.** A correct password installs `tigervnc-standalone-server` (Xtigervnc) and `util-linux` (runuser) if apt has not finished. Port 3000 stays open during that install. `docker compose logs vyas` should then contain `Xtigervnc and runuser are ready` and `Cinnamon started for vyas`.
+- **502 on `/vnc.html` after sign-in.** The login page waits until websockify answers `GET /vnc.html` before it redirects. That path is not answered with 502. The log line is `noVNC proxy is serving /vnc.html`, then `Cinnamon started for vyas`. Port 3000 stays open while the proxy starts.

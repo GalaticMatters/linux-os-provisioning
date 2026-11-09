@@ -164,6 +164,10 @@ kali111.{$BASE_DOMAIN} {
 	import desktop https://kali111:3001
 }
 
+derek.{$BASE_DOMAIN} {
+	import desktop https://derek:3001
+}
+
 sang.{$BASE_DOMAIN} {
 	import desktop https://sang:3001
 }
