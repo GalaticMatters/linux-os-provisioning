@@ -11,9 +11,9 @@ kali01–kali30 resolve to 10.0.253.1 for browsers and also take
 10.0.253.55–84 on the macvlan, so a re-render keeps that block. They stay
 on the desktop bridge for Caddy. kali111 and ubuntu111 are on that bridge
 and on the macvlan at 10.0.253.50 and 10.0.253.51. ubuntu100, derek, and
-vyas stay on the desktop bridge and macvlan at 10.0.253.52–54. derek and
-sang are persistent Kali extra-containers (derek 10.0.253.53, sang
-10.0.253.85). vyas stays Linux Mint.
+vyas stay on the desktop bridge and macvlan at 10.0.253.52–54. derek,
+sang, and ashraful are persistent Kali extra-containers (derek
+10.0.253.53, sang 10.0.253.85, ashraful 10.0.253.86). vyas stays Linux Mint.
 scripts/lab-veth.sh adds an address-less veth-peer for each Kali/Ubuntu
 pair. That interface is not a Docker network and is not the path to
 10.0.253.11.
@@ -170,7 +170,7 @@ def fleet_names(prefix: str, count: int) -> list[str]:
 
 # vai is a persistent Ubuntu SSH box, not a desktop. 10.0.253.42 sits beside
 # ubuntuserver (.41) and outside ubuntu01–30 (.11–.40), the persistent
-# desktops (.50–.54), the Kali fleet (.55–.84), and sang (.85).
+# desktops (.50–.54), the Kali fleet (.55–.84), sang (.85), and ashraful (.86).
 VAI_IP = "10.0.253.42"
 
 
@@ -186,10 +186,11 @@ PERSISTENT_DESKTOPS: list[tuple[str, str]] = [
     ("derek", "10.0.253.53"),
     ("vyas", "10.0.253.54"),
     ("sang", "10.0.253.85"),
+    ("ashraful", "10.0.253.86"),
 ]
 
 # Browser names Caddy serves on SERVER_IP, besides the kali01–kali30 fleet.
-CADDY_LAN_DESKTOPS = ["kali111", "derek", "sang", "ubuntu100", "ubuntu111"]
+CADDY_LAN_DESKTOPS = ["kali111", "derek", "sang", "ashraful", "ubuntu100", "ubuntu111"]
 
 
 def persistent_addr(name: str) -> str:
@@ -451,12 +452,12 @@ def render_compose(
         f"# {kali[0]} is {kali_addrs[0]} and {kali[-1]} is {kali_addrs[-1]} on desktop and macvlan.",
         "# Caddy still reaches each kaliNN by container name on the desktop bridge.",
         f"# Persistent desktops on desktop and macvlan: {desktop_note}.",
-        "# kali111, derek, sang, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.",
+        "# kali111, derek, sang, ashraful, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.",
         "# extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.",
         "# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.",
         "# veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.",
         "# Cloudflare still opens",
-        "# http://kali111:3000, http://derek:3000, http://sang:3000, and http://ubuntu111:3000.",
+        "# http://kali111:3000, http://derek:3000, http://sang:3000, http://ashraful:3000, and http://ubuntu111:3000.",
         "# vyas stays http://vyas:3000.",
         "# cloudflared reaches the ProLiant sshd as host.docker.internal:22.",
         "# Re-run the script after changing counts, UBUNTU_IP_START, or BASE_DOMAIN.",
@@ -558,6 +559,14 @@ def render_compose(
         user_var="SANG_USER",
         password_var="SANG_PASSWORD",
         default_user="sang",
+        require_password=True,
+    )
+    lines += render_persistent_kali(
+        "ashraful",
+        "Ashraful",
+        user_var="ASHRAFUL_USER",
+        password_var="ASHRAFUL_PASSWORD",
+        default_user="ashraful",
         require_password=True,
     )
     lines += [
@@ -764,6 +773,8 @@ def render_compose(
         "    name: cybersecurity-kali111-config",
         "  sang-config:",
         "    name: cybersecurity-sang-config",
+        "  ashraful-config:",
+        "    name: cybersecurity-ashraful-config",
         "  ubuntu111-config:",
         "    name: cybersecurity-ubuntu111-config",
         "  derek-config:",
@@ -896,11 +907,12 @@ def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_cou
     html = html.replace("%%SSH_BLURB%%", blurb)
     html = html.replace(
         "%%DESKTOP_BLURB%%",
-        "kali111, derek, sang, ubuntu100, and ubuntu111 keep their files and are not wiped at 02:00. "
+        "kali111, derek, sang, ashraful, ubuntu100, and ubuntu111 keep their files and are not wiped at 02:00. "
         f"The account on kali111 and ubuntu111 is van. The account on derek is derek. "
-        f"The account on sang is sang. "
+        f"The account on sang is sang. The account on ashraful is ashraful. "
         f"ubuntu100 keeps its files on a 500 GB disk. Open them at "
         f"https://kali111.{domain}/, https://derek.{domain}/, https://sang.{domain}/, "
+        f"https://ashraful.{domain}/, "
         f"https://ubuntu100.{domain}/, and https://ubuntu111.{domain}/. "
         "vyas is a persistent Linux Mint Cinnamon desktop with Firefox. "
         "It is not on this page. Open it in a browser at vyas.research101.stream. "

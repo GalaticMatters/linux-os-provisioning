@@ -4,13 +4,13 @@
 # Every service has mem_limit 4g. That is a ceiling, not a reservation.
 # kali01 is 10.0.253.55 and kali30 is 10.0.253.84 on desktop and macvlan.
 # Caddy still reaches each kaliNN by container name on the desktop bridge.
-# Persistent desktops on desktop and macvlan: kali111 10.0.253.50, ubuntu111 10.0.253.51, ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54, sang 10.0.253.85.
-# kali111, derek, sang, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.
+# Persistent desktops on desktop and macvlan: kali111 10.0.253.50, ubuntu111 10.0.253.51, ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54, sang 10.0.253.85, ashraful 10.0.253.86.
+# kali111, derek, sang, ashraful, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.
 # extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.
 # The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.
 # veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.
 # Cloudflare still opens
-# http://kali111:3000, http://derek:3000, http://sang:3000, and http://ubuntu111:3000.
+# http://kali111:3000, http://derek:3000, http://sang:3000, http://ashraful:3000, and http://ubuntu111:3000.
 # vyas stays http://vyas:3000.
 # cloudflared reaches the ProLiant sshd as host.docker.internal:22.
 # Re-run the script after changing counts, UBUNTU_IP_START, or BASE_DOMAIN.
@@ -53,6 +53,7 @@ x-lab-hosts: &lab-hosts
   - "kali111.cybersecurity.lan:10.0.253.1"
   - "derek.cybersecurity.lan:10.0.253.1"
   - "sang.cybersecurity.lan:10.0.253.1"
+  - "ashraful.cybersecurity.lan:10.0.253.1"
   - "ubuntu100.cybersecurity.lan:10.0.253.1"
   - "ubuntu111.cybersecurity.lan:10.0.253.1"
   - "ubuntu01.cybersecurity.lan:10.0.253.11"
@@ -702,6 +703,41 @@ services:
       retries: 5
       start_period: 180s
 
+  ashraful:
+    hostname: ashraful
+    image: lscr.io/linuxserver/kali-linux:latest
+    mem_limit: 4g
+    shm_size: "1gb"
+    restart: unless-stopped
+    stop_grace_period: 20s
+    cap_add:
+      - NET_ADMIN
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+      SERVER_IP: ${SERVER_IP:-10.0.253.1}
+      CUSTOM_USER: ${ASHRAFUL_USER:-ashraful}
+      PASSWORD: "${ASHRAFUL_PASSWORD:?Set ASHRAFUL_PASSWORD in .env}"
+      TITLE: Ashraful
+    volumes:
+      - ashraful-config:/config
+      - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
+      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
+    extra_hosts: *lab-hosts
+    networks:
+      desktop:
+        gw_priority: 100
+      lan:
+        ipv4_address: 10.0.253.86
+    logging: *json-logs
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+
   ubuntu100:
     image: lscr.io/linuxserver/webtop:ubuntu-xfce
     mem_limit: 4g
@@ -881,6 +917,7 @@ services:
       - kali111
       - derek
       - sang
+      - ashraful
       - ubuntu100
       - ubuntu111
     environment:
@@ -976,6 +1013,8 @@ volumes:
     name: cybersecurity-kali111-config
   sang-config:
     name: cybersecurity-sang-config
+  ashraful-config:
+    name: cybersecurity-ashraful-config
   ubuntu111-config:
     name: cybersecurity-ubuntu111-config
   derek-config:
