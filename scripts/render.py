@@ -142,6 +142,8 @@ def ubuntu_ips(
     # 10.0.253.55 upward belongs to kali01–kali30. Do not hand it to Ubuntu.
     for raw in fleet_kali or []:
         reserved.add(ipv4(raw, "FLEET_KALI_IP_START"))
+    # vai is a persistent SSH box at 10.0.253.42, next to ubuntuserver.
+    reserved.add(ipv4(VAI_IP, "VAI_IP"))
     chosen: list[str] = []
     for offset in range(count):
         try:
@@ -164,6 +166,12 @@ def ubuntu_ips(
 
 def fleet_names(prefix: str, count: int) -> list[str]:
     return [f"{prefix}{index:02d}" for index in range(1, count + 1)]
+
+
+# vai is a persistent Ubuntu SSH box, not a desktop. 10.0.253.42 sits beside
+# ubuntuserver (.41) and outside ubuntu01–30 (.11–.40), the persistent
+# desktops (.50–.54), the Kali fleet (.55–.84), and sang (.85).
+VAI_IP = "10.0.253.42"
 
 
 # Persistent desktops that stay up across lab off. Each is on the Compose
@@ -211,6 +219,7 @@ def check_persistent_desktops(
     for raw in ubuntu_addrs:
         forbidden.add(ipv4(raw, "UBUNTU_IP_START"))
     forbidden.add(ipv4(server_box, "UBUNTU_SERVER_IP"))
+    forbidden.add(ipv4(VAI_IP, "VAI_IP"))
     seen: set[ipaddress.IPv4Address] = set()
     for name, raw in PERSISTENT_DESKTOPS:
         addr = ipv4(raw, name)
@@ -270,6 +279,7 @@ def check_fleet_kali(
     for raw in ubuntu_addrs:
         forbidden.add(ipv4(raw, "UBUNTU_IP_START"))
     forbidden.add(ipv4(server_box, "UBUNTU_SERVER_IP"))
+    forbidden.add(ipv4(VAI_IP, "VAI_IP"))
     seen: set[ipaddress.IPv4Address] = set()
     for index, raw in enumerate(addrs, 1):
         addr = ipv4(raw, f"kali{index:02d}")
@@ -629,6 +639,29 @@ def render_compose(
         "      retries: 5",
         "      start_period: 20s",
         "",
+        "  vai:",
+        "    image: cybersecurity-ubuntu-ssh:1",
+        "    mem_limit: 4g",
+        "    build: ./ubuntu",
+        "    restart: unless-stopped",
+        "    stop_grace_period: 10s",
+        "    environment:",
+        "      SSH_USER: ${DESKTOP_USER:-van}",
+        "      SSH_PASSWORD: ${DESKTOP_PASSWORD:-}",
+        "      TZ: ${TZ:-UTC}",
+        "    volumes:",
+        "      - vai-config:/home/${DESKTOP_USER:-van}",
+        "    networks:",
+        "      lan:",
+        f"        ipv4_address: {VAI_IP}",
+        "    logging: *json-logs",
+        "    healthcheck:",
+        '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/22\'"]',
+        "      interval: 30s",
+        "      timeout: 5s",
+        "      retries: 5",
+        "      start_period: 20s",
+        "",
         "  caddy:",
         "    image: caddy:2.11.7-alpine",
         "    mem_limit: 4g",
@@ -737,6 +770,8 @@ def render_compose(
         "    name: cybersecurity-derek-config",
         "  vyas-config:",
         "    name: cybersecurity-vyas-config",
+        "  vai-config:",
+        "    name: cybersecurity-vai-config",
         "",
     ]
     return "\n".join(lines)
@@ -916,7 +951,9 @@ def main() -> int:
     server_box = str(ipv4(env.get("UBUNTU_SERVER_IP", "10.0.253.41").strip() or "10.0.253.41", "UBUNTU_SERVER_IP"))
     if server_box in addresses or server_box in {str(server), str(gateway)}:
         raise SystemExit(f"UBUNTU_SERVER_IP {server_box} is already used")
-    extra = [("ubuntuserver", server_box)]
+    extra = [("ubuntuserver", server_box), ("vai", VAI_IP)]
+    if VAI_IP in addresses or VAI_IP in {str(server), str(gateway), server_box} or VAI_IP in {addr for _name, addr in PERSISTENT_DESKTOPS}:
+        raise SystemExit(f"vai address {VAI_IP} is already used")
 
     check_persistent_desktops(subnet, gateway, server, addresses, server_box)
     desktop_ips = {addr for _name, addr in PERSISTENT_DESKTOPS}

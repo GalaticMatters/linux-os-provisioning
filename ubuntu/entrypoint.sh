@@ -68,6 +68,11 @@ fi
 if ! id "$SSH_USER" >/dev/null 2>&1; then
   useradd --create-home --shell /bin/bash --user-group "$SSH_USER"
 fi
+# A named volume may already be mounted on the home directory (vai).
+# useradd leaves that mount owned by root, so the account could not write it.
+if [ -d "/home/$SSH_USER" ]; then
+  chown "$SSH_USER:$SSH_USER" "/home/$SSH_USER"
+fi
 usermod -aG sudo "$SSH_USER"
 
 if [ "$has_pass" -eq 1 ]; then

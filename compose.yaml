@@ -117,6 +117,8 @@ x-lab-hosts: &lab-hosts
   - "ubuntu30:10.0.253.40"
   - "ubuntuserver.cybersecurity.lan:10.0.253.41"
   - "ubuntuserver:10.0.253.41"
+  - "vai.cybersecurity.lan:10.0.253.42"
+  - "vai:10.0.253.42"
 
 x-logging: &json-logs
   driver: json-file
@@ -818,6 +820,29 @@ services:
       retries: 5
       start_period: 20s
 
+  vai:
+    image: cybersecurity-ubuntu-ssh:1
+    mem_limit: 4g
+    build: ./ubuntu
+    restart: unless-stopped
+    stop_grace_period: 10s
+    environment:
+      SSH_USER: ${DESKTOP_USER:-van}
+      SSH_PASSWORD: ${DESKTOP_PASSWORD:-}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - vai-config:/home/${DESKTOP_USER:-van}
+    networks:
+      lan:
+        ipv4_address: 10.0.253.42
+    logging: *json-logs
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/22'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   caddy:
     image: caddy:2.11.7-alpine
     mem_limit: 4g
@@ -957,3 +982,5 @@ volumes:
     name: cybersecurity-derek-config
   vyas-config:
     name: cybersecurity-vyas-config
+  vai-config:
+    name: cybersecurity-vai-config
