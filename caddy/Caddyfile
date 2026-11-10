@@ -172,6 +172,10 @@ sang.{$BASE_DOMAIN} {
 	import desktop https://sang:3001
 }
 
+ashraful.{$BASE_DOMAIN} {
+	import desktop https://ashraful:3001
+}
+
 ubuntu100.{$BASE_DOMAIN} {
 	import desktop https://ubuntu100:3001
 }

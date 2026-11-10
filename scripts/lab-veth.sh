@@ -43,8 +43,9 @@ ensure_shim() {
     ip route replace "10.0.253.${n}/32" dev cyber-shim
     n=$((n + 1))
   done
+  # Persistent desktops .50–.54, Kali fleet .55–.84, sang .85, ashraful .86.
   n=50
-  while [ "$n" -le 85 ]; do
+  while [ "$n" -le 86 ]; do
     ip route replace "10.0.253.${n}/32" dev cyber-shim
     n=$((n + 1))
   done

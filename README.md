@@ -60,7 +60,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `TZ` | Timezone of the 02:00 reset. A tz database name (`UTC`, `America/New_York`), not a UTC offset. The host clock’s timezone is not used. |
 | `SSH_USER` | Account on every Ubuntu server. Not `root`. |
 | `SSH_PUBLIC_KEY` or `SSH_PASSWORD` | At least one. One single-line OpenSSH public key, and/or a single-line password. |
-| `DESKTOP_USER` | Account on kali111, ubuntu100, ubuntu111, ubuntuserver, and vai. Default `van`. Not used by derek, vyas, or sang. |
+| `DESKTOP_USER` | Account on kali111, ubuntu100, ubuntu111, ubuntuserver, and vai. Default `van`. Not used by derek, vyas, sang, or ashraful. |
 | `DESKTOP_PASSWORD` | Password for that account. Put it only in `.env`. Do not commit it. |
 | `DEREK_USER` | Account on derek. Default `derek`. Selkies browser-login username. |
 | `DEREK_PASSWORD` | Password for derek. Required. Put it only in `.env`. Do not commit it. Same role as `SANG_PASSWORD`: an empty value turns off the Kali login prompt. Compose refuses to start derek until this is set. |
@@ -68,6 +68,8 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `VYAS_PASSWORD` | Password for vyas. No default. Put it only in `.env`. Do not commit it. |
 | `SANG_USER` | Account on sang. Default `sang`. This is the Selkies browser-login username. |
 | `SANG_PASSWORD` | Password for sang. Required. Put it only in `.env`. Do not commit it. An empty value turns off the browser login, so sang opens with no prompt. kali111 prompts because `DESKTOP_PASSWORD` is set. Compose refuses to start sang until this is set. |
+| `ASHRAFUL_USER` | Account on ashraful. Default `ashraful`. This is the Selkies browser-login username. Set it in `.env`. |
+| `ASHRAFUL_PASSWORD` | Password for ashraful. Required. Put it only in `.env`. Do not commit it. An empty value turns off the browser login, so ashraful opens with no prompt. Compose refuses to start ashraful until this is set (`Set ASHRAFUL_PASSWORD in .env`). |
 
 `KALI_COUNT` and `UBUNTU_COUNT` default to 30. The repo already contains that render, so a copied `.env` can start all 60 without running the generator first.
 
@@ -86,6 +88,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `https://kali111.research101.stream` | Cloudflare HTTP `http://kali111:3000`, macvlan `10.0.253.50` | Persistent Kali on the `desktop` bridge, same network as cloudflared. Also on the macvlan, so it can ping `10.0.253.11`. |
 | `https://sang.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.85` | Persistent Kali, same image as kali111. Sign in as `sang`. Not part of `lab.sh on`/`off`, and not recreated at 02:00. |
 | `https://sang.research101.stream` | Cloudflare HTTP `http://sang:3000`, macvlan `10.0.253.85` | Same desktop. Add that hostname on the existing tunnel. |
+| `https://ashraful.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.86` | Persistent Kali, same image and pattern as sang. Sign in as `ashraful`. Password is `ASHRAFUL_PASSWORD` in `.env` only. Not part of `lab.sh on`/`off`, and not recreated at 02:00. Start it with `./scripts/lab.sh extra-containers-on`. |
 | `ssh ssh.research101.stream` | Cloudflare SSH `ssh://host.docker.internal:22` | The ProLiant sshd. Same machine as `10.0.253.1`, without signing in to kali111 first. |
 | `https://ubuntu111.research101.stream` | Cloudflare HTTP `http://ubuntu111:3000`, macvlan `10.0.253.51` | Persistent Ubuntu desktop on that same bridge, and on the macvlan. SSH is `ssh van@ubuntu111` on port 22, same password as the web login. |
 | ubuntu100 | macvlan `10.0.253.52`, still `ubuntu100` on the `desktop` bridge | Persistent Ubuntu desktop on the 500 GB disk. Same reachability. |
@@ -139,14 +142,14 @@ Start DNS once. `dns-on` starts only dnsmasq. `on` starts only kali01–kali30 a
 
 `off` stops only kali01–kali30 and ubuntu01–ubuntu30. It generates those 60 names and `docker stop`s their container IDs. It does not read `docker compose config --services` and it does not call `docker compose stop`. dnsmasq, Caddy, the scheduler, derek, vyas, kali111, sang, ubuntu111, ubuntu100, ubuntuserver, vai, cloudflared, and any other service keep running, so names such as `cybersecurity.lan` still resolve. `./scripts/lab.sh dns-off` stops only dnsmasq.
 
-To start or stop the extras that `on` and `off` leave alone (derek, vyas, kali111, ubuntu111, sang, and vai):
+To start or stop the extras that `on` and `off` leave alone (derek, vyas, kali111, ubuntu111, sang, ashraful, and vai):
 
 ```sh
 ./scripts/lab.sh extra-containers-on
 ./scripts/lab.sh extra-containers-off
 ```
 
-`extra-containers-on` starts only derek, vyas, kali111, ubuntu111, sang, and vai (`docker compose up -d` with those six names). It does not start the fleet or dnsmasq, and it does not recreate unrelated services. `extra-containers-off` stops only those six. It does not stop dnsmasq or the fleet.
+`extra-containers-on` starts only derek, vyas, kali111, ubuntu111, sang, ashraful, and vai (`docker compose up -d` with those seven names). It does not start the fleet or dnsmasq, and it does not recreate unrelated services. `extra-containers-off` stops only those seven. It does not stop dnsmasq or the fleet. `lab.sh on` and `lab.sh off` do not start or stop ashraful, and the 02:00 fleet reset does not recreate it.
 
 When names are down, use the console or `10.0.253.1`, then:
 
@@ -155,7 +158,7 @@ When names are down, use the console or `10.0.253.1`, then:
 ./scripts/lab.sh on
 ```
 
-`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, and `on` names only kali01–kali30 and ubuntu01–ubuntu30, so dnsmasq does not start. `off` keeps dnsmasq running by stopping only the kali01–kali30 and ubuntu01–ubuntu30 container IDs. `extra-containers-on` starts only derek, vyas, kali111, ubuntu111, sang, and vai, and `extra-containers-off` stops only them. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
+`.env.example` sets `COMPOSE_PROFILES=dns`. `lab.sh` clears that for `on`, and `on` names only kali01–kali30 and ubuntu01–ubuntu30, so dnsmasq does not start. `off` keeps dnsmasq running by stopping only the kali01–kali30 and ubuntu01–ubuntu30 container IDs. `extra-containers-on` starts only derek, vyas, kali111, ubuntu111, sang, ashraful, and vai, and `extra-containers-off` stops only them. Ubuntu containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional: the repo has no default password.
 
 The first start pulls the Kali image (about 4.8 GB). Watch `docker compose ps` and `docker compose logs -f caddy`. Then install the CA and open <https://cybersecurity.lan>.
 
@@ -170,9 +173,11 @@ docker compose pull kali01
 
 Every Kali service uses the same image, so pulling one updates the image for the fleet. The reset recreates the containers onto it.
 
-## Persistent Kali: derek and sang
+## Persistent Kali: derek, sang, and ashraful
 
-`derek` is the same Kali image as `sang` and `kali111` (`lscr.io/linuxserver/kali-linux:latest`). It is not Linux Mint. It sits on the Compose network `desktop` (`cybersecurity-desktop`), so `cloudflared` reaches it as `http://derek:3000`, and on macvlan at `10.0.253.53`. Caddy serves `https://derek.cybersecurity.lan` to `https://derek:3001`. Sign in as `DEREK_USER` (default `derek`). The password is `DEREK_PASSWORD`. An empty password turns off the Selkies login, same as sang.
+`derek` is the same Kali image as `sang`, `ashraful`, and `kali111` (`lscr.io/linuxserver/kali-linux:latest`). It is not Linux Mint. It sits on the Compose network `desktop` (`cybersecurity-desktop`), so `cloudflared` reaches it as `http://derek:3000`, and on macvlan at `10.0.253.53`. Caddy serves `https://derek.cybersecurity.lan` to `https://derek:3001`. Sign in as `DEREK_USER` (default `derek`). The password is `DEREK_PASSWORD`. An empty password turns off the Selkies login, same as sang.
+
+`ashraful` matches `sang`: same image, `mem_limit: 4g`, `shm_size: "1gb"`, desktop bridge plus macvlan, named volume `cybersecurity-ashraful-config` at `/config`, and no `fleet.reset` label. The macvlan address is `10.0.253.86`. Caddy serves `https://ashraful.cybersecurity.lan` to `https://ashraful:3001`. dnsmasq publishes `ashraful.cybersecurity.lan` to `SERVER_IP` the same way it publishes `sang.cybersecurity.lan`. Reaching `10.0.253.86` does not require a dnsmasq restart. Sign in as `ASHRAFUL_USER` (default `ashraful`). Put `ASHRAFUL_PASSWORD` in `.env` only. Do not commit that password. Compose refuses to start the container while `ASHRAFUL_PASSWORD` is empty, so the desktop does not open unlocked. `./scripts/lab.sh extra-containers-on` starts it. `./scripts/lab.sh on` and `off` do not. The 02:00 job does not recreate it. `sudo ./scripts/lab-veth.sh` routes `10.0.253.86` via `cyber-shim`, the same range that already covers sang. ashraful has no `veth-peer`, same as sang.
 
 The named volume `cybersecurity-derek-config` used to be a Mint home at `/home/derek`. Kali mounts it at `/config`. After switching the image, remove that volume before the first Kali start, or the old Mint files sit where Selkies expects its config.
 
@@ -244,7 +249,7 @@ docker compose up -d --no-deps derek
 
 Bundled dnsmasq copies `dns/records.conf` into `/tmp/records.conf` only when that container starts, so a running dnsmasq does not see the new `derek.cybersecurity.lan` line. Restart it only if a lab PC should resolve that LAN name: `docker compose restart dnsmasq`. `dns-off` is the same restart with a longer gap, and it is not required. Public `derek.research101.stream` is unchanged either way.
 
-Recreating derek without removing `cybersecurity-derek-config` first leaves Mint home files where Kali expects Selkies config. This is not the 02:00 fleet reset. `lab.sh on` does not start or recreate them. It only runs `docker compose up -d` for kali01–kali30 and ubuntu01–ubuntu30. `lab.sh off` leaves derek and vyas running (and kali111, sang, and ubuntu111). `lab.sh extra-containers-on` starts only derek, vyas, kali111, ubuntu111, sang, and vai. `lab.sh extra-containers-off` stops only those six. Neither starts the fleet or dnsmasq, and neither recreates unrelated services. `lab.sh on` does not start or stop dnsmasq or cloudflared. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them. The existing `derek.research101.stream` origin `http://derek:3000` stays valid.
+Recreating derek without removing `cybersecurity-derek-config` first leaves Mint home files where Kali expects Selkies config. This is not the 02:00 fleet reset. `lab.sh on` does not start or recreate them. It only runs `docker compose up -d` for kali01–kali30 and ubuntu01–ubuntu30. `lab.sh off` leaves derek and vyas running (and kali111, sang, and ubuntu111). `lab.sh extra-containers-on` starts only derek, vyas, kali111, ubuntu111, sang, ashraful, and vai. `lab.sh extra-containers-off` stops only those seven. Neither starts the fleet or dnsmasq, and neither recreates unrelated services. `lab.sh on` does not start or stop dnsmasq or cloudflared. Adding the hostnames is a Cloudflare dashboard change. Compose does not create them. The existing `derek.research101.stream` origin `http://derek:3000` stays valid.
 
 vyas runs systemd so Cinnamon and the HTTP desktop can start. It stays privileged because systemd needs that to bring the session up. It does not set `cgroup: host` and it does not mount the host `/sys/fs/cgroup`. A host cgroup namespace makes the container exit when another container stops. It stays on the `desktop` network and on the macvlan LAN. The first start installs noVNC, so it takes longer than a later start. derek is the Kali image, not privileged, same as sang. `./scripts/lab.sh on` does not recreate them.
 
@@ -270,7 +275,7 @@ ubuntu01–ubuntu30 and ubuntuserver share one local image, `cybersecurity-ubunt
 
 SSH is the same account as before. ubuntu01–ubuntu30 take `SSH_USER` and `SSH_PUBLIC_KEY` or `SSH_PASSWORD` from `.env`. ubuntuserver and vai take `DESKTOP_USER` (default `van`) and `DESKTOP_PASSWORD` on that same image. Addresses stay on the macvlan: `10.0.253.11` through `10.0.253.40`, ubuntuserver at `10.0.253.41`, and vai at `10.0.253.42`.
 
-`vai` is that same Ubuntu server image, with `openssh` on port 22, plus `apt`, `ping`, `ip`, `curl`, and `sudo`. Sign in as `ssh van@vai.cybersecurity.lan` (or whatever `DESKTOP_USER` is). The password is `DESKTOP_PASSWORD` in `.env`, the same value ubuntuserver uses. There is no password in git. Its home is the named volume `cybersecurity-vai-config`, mounted at `/home/$DESKTOP_USER`. `lab.sh on` and `lab.sh off` do not start or stop it. `./scripts/lab.sh extra-containers-on` and `extra-containers-off` do, next to derek, vyas, kali111, ubuntu111, and sang. It has no `fleet.reset` label, so the 02:00 job does not recreate it or wipe that volume.
+`vai` is that same Ubuntu server image, with `openssh` on port 22, plus `apt`, `ping`, `ip`, `curl`, and `sudo`. Sign in as `ssh van@vai.cybersecurity.lan` (or whatever `DESKTOP_USER` is). The password is `DESKTOP_PASSWORD` in `.env`, the same value ubuntuserver uses. There is no password in git. Its home is the named volume `cybersecurity-vai-config`, mounted at `/home/$DESKTOP_USER`. `lab.sh on` and `lab.sh off` do not start or stop it. `./scripts/lab.sh extra-containers-on` and `extra-containers-off` do, next to derek, vyas, kali111, ubuntu111, sang, and ashraful. It has no `fleet.reset` label, so the 02:00 job does not recreate it or wipe that volume.
 
 Those packages live in the image. The 02:00 reset still recreates ubuntu01–ubuntu30, because they are labeled `fleet.reset`. It still does not recreate ubuntuserver or vai. Recreate drops the writable layer (the account, `authorized_keys`, and the host keys) and keeps the image, so `apt`, `ping`, `ip`, `curl`, and `sudo` come back. A package installed later with `apt` sits on the writable layer, so the next recreate removes it. `./scripts/lab.sh on` and `off` still only start and stop kali01–kali30 and ubuntu01–ubuntu30.
 
@@ -316,8 +321,9 @@ Persistent desktops, same idea, different addresses:
 | derek | `10.0.253.53` | `http://derek:3000` on the `desktop` bridge |
 | vyas | `10.0.253.54` | `http://vyas:3000` |
 | sang | `10.0.253.85` | `http://sang:3000` on the `desktop` bridge |
+| ashraful | `10.0.253.86` | `http://ashraful:3000` on the `desktop` bridge |
 
-Those addresses are not `10.0.253.1`, not the gateway `10.0.253.254`, not `10.0.253.2`–`10.0.253.10`, and not `10.0.253.11`–`10.0.253.41`. The bridge keeps the default route (`gw_priority`), so Cloudflare opens `http://derek:3000`, `http://vyas:3000`, `http://kali111:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. Caddy still opens `https://kali111:3001`, `https://derek:3001`, and `https://sang:3001` for the `.cybersecurity.lan` names.
+Those addresses are not `10.0.253.1`, not the gateway `10.0.253.254`, not `10.0.253.2`–`10.0.253.10`, and not `10.0.253.11`–`10.0.253.41`. The bridge keeps the default route (`gw_priority`), so Cloudflare opens `http://derek:3000`, `http://vyas:3000`, `http://kali111:3000`, `http://sang:3000`, `http://ashraful:3000`, and `http://ubuntu111:3000`. Caddy still opens `https://kali111:3001`, `https://derek:3001`, `https://sang:3001`, and `https://ashraful:3001` for the `.cybersecurity.lan` names.
 
 A macvlan interface does not deliver packets to the parent address `10.0.253.1`, so the macvlan desktops do not send DNS to dnsmasq there. kali111, derek, sang, and ubuntu111 are on the macvlan and on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route (`gw_priority`), so Cloudflare still opens `http://kali111:3000`, `http://derek:3000`, `http://sang:3000`, and `http://ubuntu111:3000`. kali111, derek, and sang still add a route for `SERVER_IP` via that bridge, so `ssh` to `10.0.253.1` reaches sshd on the ProLiant. Recreate kali111, sang, and ubuntu111 after pulling if those three are still on the old hosts file: `docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111`. The first Kali start of derek is the volume replacement above. A plain `--force-recreate` keeps `cybersecurity-derek-config` and would mount the old Mint home at `/config`. Compose writes the Ubuntu server records into each desktop’s hosts file (`extra_hosts`). `ubuntu01` and `ubuntu01.cybersecurity.lan` both resolve to `10.0.253.11`, through `ubuntu30` at `10.0.253.40` and `ubuntuserver` at `10.0.253.41`. The same addresses are in `dns/records.conf`.
 
@@ -330,7 +336,7 @@ ping -c 2 ubuntu01.cybersecurity.lan
 ssh student@ubuntu01.cybersecurity.lan
 ```
 
-`./scripts/lab.sh off` still stops only kali01–kali30 and ubuntu01–ubuntu30. It does not stop these six.
+`./scripts/lab.sh off` still stops only kali01–kali30 and ubuntu01–ubuntu30. It does not stop these desktops, including ashraful.
 
 After `git pull` on the ProLiant, recreate only those desktops so they join the macvlan. This is not `lab.sh off` and it is not the 02:00 reset:
 
@@ -347,7 +353,7 @@ The ProLiant cannot ping macvlan addresses such as `10.0.253.11` (`ubuntu01`). L
 docker exec -it ubuntu01 bash
 ```
 
-Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.42`, not the persistent desktop block `10.0.253.50`–`10.0.253.54`, not sang at `10.0.253.85`, and not the Kali fleet block `10.0.253.55`–`10.0.253.84`. `sudo ./scripts/lab-veth.sh` creates it and routes ubuntu01 through vai (`10.0.253.11`–`10.0.253.42`) plus `10.0.253.50`–`10.0.253.85` via `cyber-shim`. The same steps by hand:
+Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.42`, not the persistent desktop block `10.0.253.50`–`10.0.253.54`, not sang at `10.0.253.85`, not ashraful at `10.0.253.86`, and not the Kali fleet block `10.0.253.55`–`10.0.253.84`. `sudo ./scripts/lab-veth.sh` creates it and routes ubuntu01 through vai (`10.0.253.11`–`10.0.253.42`) plus `10.0.253.50`–`10.0.253.86` via `cyber-shim`. The same steps by hand:
 
 ```sh
 # PARENT_IFACE is the interface which already has 10.0.253.1 (br-ex or eno1).
@@ -359,7 +365,7 @@ for i in $(seq 11 40); do
 done
 ```
 
-`10.0.253.100` is only an example shim address: not the gateway `10.0.253.254`, not `10.0.253.1`, not in the reserved range `10.0.253.2`–`10.0.253.10`, not in the Ubuntu range `10.0.253.11`–`10.0.253.42`, not in the persistent desktop block `10.0.253.50`–`10.0.253.54`, not sang at `10.0.253.85`, and not in the Kali fleet block `10.0.253.55`–`10.0.253.84`. The parent has to accept the extra MACs (promiscuous mode, no port security, not typical Wi-Fi). Cloud interfaces often drop them, and then the containers stay unreachable from the LAN.
+`10.0.253.100` is only an example shim address: not the gateway `10.0.253.254`, not `10.0.253.1`, not in the reserved range `10.0.253.2`–`10.0.253.10`, not in the Ubuntu range `10.0.253.11`–`10.0.253.42`, not in the persistent desktop block `10.0.253.50`–`10.0.253.54`, not sang at `10.0.253.85`, not ashraful at `10.0.253.86`, and not in the Kali fleet block `10.0.253.55`–`10.0.253.84`. The parent has to accept the extra MACs (promiscuous mode, no port security, not typical Wi-Fi). Cloud interfaces often drop them, and then the containers stay unreachable from the LAN.
 
 `PARENT_IFACE`, `LAN_SUBNET`, and `LAN_GATEWAY` are read when Compose starts. Changing only the NIC does not require a re-render. The Ubuntu addresses are written into `compose.yaml` and `dns/records.conf`, so they still have to fall inside the subnet you set.
 
@@ -480,7 +486,7 @@ Recreate replaces the container.
 
 - Kali home is a tmpfs on `/config`. The new container has an empty home. Packages written into the image layer rather than the home are discarded too.
 - Ubuntu fleet boxes have no volume. The writable layer goes away, including the account, `authorized_keys`, and the SSH host keys. The entrypoint creates the account again from `.env` and generates new host keys. `apt`, `ping`, `ip`, `curl`, and `sudo` stay, because they are in the image. `vai` is not in that set. Its home stays on `cybersecurity-vai-config`.
-- derek, vyas, kali111, and sang are not labeled `fleet.reset`. The job does not recreate them. `cybersecurity-derek-config`, `cybersecurity-vyas-config`, `cybersecurity-kali111-config`, and `cybersecurity-sang-config` stay. After switching derek from Mint to Kali, remove `cybersecurity-derek-config` once so the first Kali start is a clean `/config`.
+- derek, vyas, kali111, sang, and ashraful are not labeled `fleet.reset`. The job does not recreate them. `cybersecurity-derek-config`, `cybersecurity-vyas-config`, `cybersecurity-kali111-config`, `cybersecurity-sang-config`, and `cybersecurity-ashraful-config` stay. After switching derek from Mint to Kali, remove `cybersecurity-derek-config` once so the first Kali start is a clean `/config`.
 
 Caddy, dnsmasq, and the scheduler keep running. The scheduler is not recreated (that would kill the job). It mounts the Docker socket and runs as root, so it can control the daemon.
 
@@ -505,7 +511,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `ubuntu/` | Ubuntu Server image: OpenSSH, apt, ping, ip, curl, and sudo. Host keys at start. Not a desktop. |
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
-| `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, ubuntu111, sang, and vai. `dns-on` / `dns-off` start and stop only dnsmasq. `rebuild` rebuilds the shared Ubuntu image and force-recreates ubuntu01–ubuntu30 and ubuntuserver |
+| `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, ubuntu111, sang, ashraful, and vai. `dns-on` / `dns-off` start and stop only dnsmasq. `rebuild` rebuilds the shared Ubuntu image and force-recreates ubuntu01–ubuntu30 and ubuntuserver |
 | `scripts/export-ca.sh` | Copy the Caddy root out of the volume |
 | `scripts/reset-now.sh` | Recreate both fleets now |
 
@@ -538,6 +544,7 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **502 on ubuntu111.research101.stream, kali111.research101.stream, derek.research101.stream, or sang.research101.stream.** The tunnel origin is HTTP `http://ubuntu111:3000`, `http://kali111:3000`, `http://derek:3000`, or `http://sang:3000`. Those containers are on the `desktop` bridge with cloudflared. The desktop bridge keeps the default route. After `git pull`, `docker compose up -d --force-recreate --no-deps kali111 derek sang ubuntu111`. For derek after the Mint-to-Kali switch, remove `cybersecurity-derek-config` first.
 - **derek or vyas is a blank page.** The public hostname must be service type HTTP, origin `http://derek:3000` or `http://vyas:3000`. RDP does not render in a browser. Replace an RDP route.
 - **sang opens with no password prompt.** `SANG_PASSWORD` is empty in `.env`, so Selkies disables HTTP basic auth. kali111 prompts because `DESKTOP_PASSWORD` is set. `CUSTOM_USER=sang` does not turn the dialog on by itself. Put `SANG_USER=sang` and `SANG_PASSWORD` in `.env` (the file Compose reads in the repo directory, not `.env.example`). Then `docker compose up -d --force-recreate --no-deps sang`. The browser should ask for `sang` and that password, the same dialog as kali111. Compose errors with `Set SANG_PASSWORD in .env` if the value is still empty.
+- **ashraful opens with no password prompt, or will not start.** `ASHRAFUL_PASSWORD` is empty in `.env`. Put `ASHRAFUL_USER=ashraful` and `ASHRAFUL_PASSWORD` in `.env` only. Do not commit the password. Then `./scripts/lab.sh extra-containers-on`. Compose errors with `Set ASHRAFUL_PASSWORD in .env` if the value is still empty. The desktop is at `10.0.253.86` without a dnsmasq restart. The name `ashraful.cybersecurity.lan` is in `dns/records.conf` the same way as sang.
 - **derek opens with no password prompt.** `DEREK_PASSWORD` is empty in `.env`, so Selkies disables HTTP basic auth. Put `DEREK_USER=derek` and `DEREK_PASSWORD` in `.env`, remove the old Mint volume if this is the first Kali start, then `docker compose up -d --force-recreate --no-deps derek`. Compose errors with `Set DEREK_PASSWORD in .env` if the value is still empty.
 - **The Mint login is rejected.** `VYAS_PASSWORD` is empty, or the container was not recreated after the password changed. The entrypoint resets the password from `.env` on start. The same password is used for `sudo` after Cinnamon starts.
 - **Sign-in says the desktop did not start.** A correct password installs `tigervnc-standalone-server` (Xtigervnc) and `util-linux` (runuser) if apt has not finished. Port 3000 stays open during that install. `docker compose logs vyas` should then contain `Xtigervnc and runuser are ready` and `Cinnamon started for vyas`.
