@@ -826,6 +826,7 @@ services:
     build: ./ubuntu
     restart: unless-stopped
     stop_grace_period: 10s
+    privileged: true
     environment:
       SSH_USER: ${DESKTOP_USER:-van}
       SSH_PASSWORD: ${DESKTOP_PASSWORD:-}
