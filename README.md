@@ -96,7 +96,7 @@ Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10
 
 ## Lab interface
 
-`veth-peer` is a second cable with no address and no default route. kali01's `veth-peer` is the other end of ubuntu01's `veth-peer`. kali02 is cabled only to ubuntu02, through kali30 to ubuntu30, and kali111 to ubuntu111. It is not the path to `10.0.253.11`. ubuntuserver, ubuntu100, derek, sang, and vyas do not have it.
+`veth-peer` is a second cable with no address and no default route. kali01's `veth-peer` is the other end of ubuntu01's `veth-peer`. kali02 is cabled only to ubuntu02, through kali30 to ubuntu30, and kali111 to ubuntu111. It is not the path to `10.0.253.11`. ubuntuserver, vai, ubuntu100, derek, sang, and vyas do not have it.
 
 kali111 and ubuntu111 keep that cable until those two containers are recreated. The 02:00 job recreates kali01–kali30 and ubuntu01–ubuntu30, and the cable is deleted with the old network namespace. After that recreate, the job runs `scripts/lab-veth.sh` again. A pair that already has `veth-peer` on both sides is left alone, so this does not reset the 111 lab. With the fleet up, put the student cables back now:
 
@@ -110,7 +110,7 @@ sudo ./scripts/lab-veth.sh
 
 A Docker network on that interface was sending `ubuntu01`'s replies away from the macvlan, so ping and SSH to `10.0.253.11` stopped. That Docker network is gone.
 
-The ProLiant's own address `10.0.253.1` cannot reach a macvlan child. `sudo ./scripts/lab-veth.sh` adds a shim, `cyber-shim`, at `10.0.253.100`, and then `ping 10.0.253.11` from this server uses the shim. After `git pull`:
+The ProLiant's own address `10.0.253.1` cannot reach a macvlan child. `sudo ./scripts/lab-veth.sh` adds a shim, `cyber-shim`, at `10.0.253.100`, and then `ping 10.0.253.11` and `ping 10.0.253.42` (vai) from this server use the shim. After `git pull`:
 
 ```sh
 docker compose up -d --force-recreate --no-deps $(for n in $(seq 1 30); do printf 'kali%02d ubuntu%02d ' "$n" "$n"; done) kali111 ubuntu111
@@ -347,7 +347,7 @@ The ProLiant cannot ping macvlan addresses such as `10.0.253.11` (`ubuntu01`). L
 docker exec -it ubuntu01 bash
 ```
 
-Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.41`, not the persistent desktop block `10.0.253.50`–`10.0.253.54`, not sang at `10.0.253.85`, and not the Kali fleet block `10.0.253.55`–`10.0.253.84`. `sudo ./scripts/lab-veth.sh` creates it. The same steps by hand:
+Optional shim, if you need to SSH from the host. Pick an address that is not the gateway, not `SERVER_IP`, not `10.0.253.2`–`10.0.253.10`, not `10.0.253.11`–`10.0.253.42`, not the persistent desktop block `10.0.253.50`–`10.0.253.54`, not sang at `10.0.253.85`, and not the Kali fleet block `10.0.253.55`–`10.0.253.84`. `sudo ./scripts/lab-veth.sh` creates it and routes ubuntu01 through vai (`10.0.253.11`–`10.0.253.42`) plus `10.0.253.50`–`10.0.253.85` via `cyber-shim`. The same steps by hand:
 
 ```sh
 # PARENT_IFACE is the interface which already has 10.0.253.1 (br-ex or eno1).
@@ -359,7 +359,7 @@ for i in $(seq 11 40); do
 done
 ```
 
-`10.0.253.100` is only an example shim address: not the gateway `10.0.253.254`, not `10.0.253.1`, not in the reserved range `10.0.253.2`–`10.0.253.10`, not in the Ubuntu range `10.0.253.11`–`10.0.253.41`, not in the persistent desktop block `10.0.253.50`–`10.0.253.54`, not sang at `10.0.253.85`, and not in the Kali fleet block `10.0.253.55`–`10.0.253.84`. The parent has to accept the extra MACs (promiscuous mode, no port security, not typical Wi-Fi). Cloud interfaces often drop them, and then the containers stay unreachable from the LAN.
+`10.0.253.100` is only an example shim address: not the gateway `10.0.253.254`, not `10.0.253.1`, not in the reserved range `10.0.253.2`–`10.0.253.10`, not in the Ubuntu range `10.0.253.11`–`10.0.253.42`, not in the persistent desktop block `10.0.253.50`–`10.0.253.54`, not sang at `10.0.253.85`, and not in the Kali fleet block `10.0.253.55`–`10.0.253.84`. The parent has to accept the extra MACs (promiscuous mode, no port security, not typical Wi-Fi). Cloud interfaces often drop them, and then the containers stay unreachable from the LAN.
 
 `PARENT_IFACE`, `LAN_SUBNET`, and `LAN_GATEWAY` are read when Compose starts. Changing only the NIC does not require a re-render. The Ubuntu addresses are written into `compose.yaml` and `dns/records.conf`, so they still have to fall inside the subnet you set.
 

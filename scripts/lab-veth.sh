@@ -3,8 +3,9 @@
 # with ubuntu111. Each pair gets one cable. Both ends are named veth-peer,
 # with no address and no default route. A pair that already has veth-peer
 # on both sides is left alone. Also add a macvlan shim so this server can
-# ping 10.0.253.11. The shim is the only way off the parent NIC: frames
-# from 10.0.253.1 never reach a macvlan child.
+# ping 10.0.253.11, and the persistent Ubuntu boxes through vai at
+# 10.0.253.42. The shim is the only way off the parent NIC: frames
+# from 10.0.253.1 never reach a macvlan child. vai has no veth-peer.
 set -u
 
 cd "$(dirname "$0")/.."
@@ -36,8 +37,9 @@ ensure_shim() {
   fi
   ip addr show cyber-shim | grep -q '10.0.253.100/' || ip addr add 10.0.253.100/32 dev cyber-shim
   ip link set cyber-shim up
+  # ubuntu01 (.11) through ubuntu30 (.40), ubuntuserver (.41), vai (.42).
   n=11
-  while [ "$n" -le 41 ]; do
+  while [ "$n" -le 42 ]; do
     ip route replace "10.0.253.${n}/32" dev cyber-shim
     n=$((n + 1))
   done
