@@ -40,7 +40,7 @@ The switch hostname is `lab`. Management is SVI `Vlan10` at `10.0.253.251/24`, d
 
 `show vlan id 10` should list `Gi0/1` through `Gi0/12`. Plug only the ProLiant NIC that holds `10.0.253.1`. If that address lives on `br-ex` and `eno1` is a member of the bridge, the cable is in `eno1` and `PARENT_IFACE` is `br-ex`.
 
-Thirty Kali desktops in the browser, and thirty Ubuntu servers you reach with SSH. Names sit under `cybersecurity.lan` (`BASE_DOMAIN`). [Caddy](https://caddyserver.com/) terminates HTTPS for the Kali names. Ubuntu is not a desktop and not a Webtop. ubuntu01–ubuntu30 and ubuntuserver are Ubuntu Server containers on their macvlan addresses, with `sshd` on port 22. The shared image also has `apt`, `ping`, `ip`, `curl`, and `sudo`.
+Thirty Kali desktops in the browser, and thirty Ubuntu servers you reach with SSH. Names sit under `cybersecurity.lan` (`BASE_DOMAIN`). [Caddy](https://caddyserver.com/) terminates HTTPS for the Kali names. Ubuntu is not a desktop and not a Webtop. ubuntu01–ubuntu30 and ubuntuserver are Ubuntu Server containers on their macvlan addresses, with `sshd` on port 22. The shared image also has `apt`, `ping`, `ip`, `curl`, `sudo`, and `nfs-kernel-server` (not started until the NFS lab).
 
 Anyone who can open a Kali URL gets a desktop, and that desktop’s terminal has passwordless sudo inside the container. Keep this on a trusted LAN. Do not publish it on the internet.
 
@@ -122,6 +122,103 @@ ping -c 2 10.0.253.11
 ```
 
 All 30 Kali containers share one image, `lscr.io/linuxserver/kali-linux:latest`. There is one copy of that image on disk.
+
+## NFS lab
+
+One pair shares a folder named `sharedfolder`. Ubuntu is the NFS server. Kali is the NFS client. This is a student lab you run on a pair, not an always-on export on all 30 boxes. `lab.sh on` / `off`, `extra-containers-on` / `off`, `lab-veth.sh`, and the 02:00 reset do not start NFS. The 02:00 recreate drops `/sharedfolder` and `/etc/exports` with the Ubuntu writable layer, so run the lab again after that.
+
+Prefer `veth-peer` so NFS stays off the fleet LAN. Each pair can reuse the same link-local addresses: the cable is private. kali01/ubuntu01 is the worked example. The same steps work for kaliNN/ubuntuNN.
+
+On the ProLiant, pull and rebuild the Ubuntu image so `nfs-kernel-server` is present (`apt` on a live box is wiped at 02:00):
+
+```sh
+git pull
+./scripts/lab.sh rebuild
+sudo modprobe nfsd
+```
+
+`rebuild` already puts `veth-peer` back. The `modprobe` loads kernel nfsd on the ProLiant; the containers use that module. If a pair has no cable, run `sudo ./scripts/lab-veth.sh`.
+
+### Address veth-peer (kali01 / ubuntu01)
+
+```sh
+docker compose exec ubuntu01 ip addr add 192.168.101.1/24 dev veth-peer
+docker compose exec ubuntu01 ip link set veth-peer up
+docker compose exec kali01 ip addr add 192.168.101.2/24 dev veth-peer
+docker compose exec kali01 ip link set veth-peer up
+docker compose exec kali01 ping -c 2 192.168.101.1
+```
+
+`ip addr add` prints `File exists` if that address is already on the cable. The helper uses `ip addr replace` instead:
+
+```sh
+./scripts/nfs-lab.sh addr
+```
+
+`addr` defaults to pair 01. `./scripts/nfs-lab.sh addr 07` is kali07/ubuntu07, still `192.168.101.1` on Ubuntu and `192.168.101.2` on Kali.
+
+### Export on Ubuntu, mount on Kali
+
+Helper, from the ProLiant:
+
+```sh
+./scripts/nfs-lab.sh server
+./scripts/nfs-lab.sh client
+```
+
+`server` creates `/sharedfolder` on `ubuntu01`, writes `/etc/exports` for the Kali peer only (not `*`), starts nfsd, and prints `exportfs -v`. `client` installs `nfs-common` on `kali01` if needed and mounts at `/mnt/sharedfolder`. Both use `docker compose exec --privileged` so nfsd and the mount work without changing the fleet Compose capabilities.
+
+By hand, same pair. The export uses `rw,sync,no_subtree_check` and the default `root_squash`: root on Kali is treated as `nobody` on Ubuntu. Write as a normal user (`student` on Ubuntu, `abc` on Kali; both are UID 1000). `/sharedfolder` is mode `1777` so either side can create files.
+
+```sh
+docker compose exec --privileged ubuntu01 mkdir -p /sharedfolder
+docker compose exec --privileged ubuntu01 chmod 1777 /sharedfolder
+docker compose exec --privileged ubuntu01 sh -c 'printf "%s\n" "/sharedfolder 192.168.101.2(rw,sync,no_subtree_check)" > /etc/exports'
+docker compose exec --privileged ubuntu01 sh -c 'mkdir -p /proc/fs/nfsd /var/lib/nfs/sm; grep -q " /proc/fs/nfsd " /proc/mounts || mount -t nfsd nfsd /proc/fs/nfsd; rpcbind -w; exportfs -ra; rpc.nfsd 8; rpc.mountd; exportfs -v'
+docker compose exec --privileged kali01 apt-get update
+docker compose exec --privileged kali01 apt-get install -y --no-install-recommends nfs-common
+docker compose exec --privileged kali01 mkdir -p /mnt/sharedfolder
+docker compose exec --privileged kali01 mount -t nfs 192.168.101.1:/sharedfolder /mnt/sharedfolder
+```
+
+Kali is not built in this repo. `nfs-common` is an `apt` step on the desktop (or the helper's `client`). The Ubuntu image already has `nfs-kernel-server`, `nfs-common`, and `rpcbind`.
+
+### Verify
+
+```sh
+docker compose exec --privileged ubuntu01 sh -c 'echo hello-from-ubuntu > /sharedfolder/ubuntu.txt'
+docker compose exec --privileged kali01 cat /mnt/sharedfolder/ubuntu.txt
+docker compose exec --privileged kali01 sh -c 'echo hello-from-kali > /mnt/sharedfolder/kali.txt'
+docker compose exec --privileged ubuntu01 cat /sharedfolder/kali.txt
+```
+
+The first `cat` should print `hello-from-ubuntu`. The second should print `hello-from-kali`.
+
+### Any pair
+
+Same addresses on every veth-peer. For kali12/ubuntu12:
+
+```sh
+docker compose exec ubuntu12 ip addr add 192.168.101.1/24 dev veth-peer
+docker compose exec ubuntu12 ip link set veth-peer up
+docker compose exec kali12 ip addr add 192.168.101.2/24 dev veth-peer
+docker compose exec kali12 ip link set veth-peer up
+./scripts/nfs-lab.sh server 12
+./scripts/nfs-lab.sh client 12
+```
+
+Run NFS on one Ubuntu at a time. Kernel nfsd is shared by the host.
+
+### Skip veth-peer (macvlan)
+
+ubuntu01 is already `10.0.253.11`. kali01 is already `10.0.253.55`. In general ubuntuNN is `10.0.253.(10+N)` and kaliNN is `10.0.253.(54+N)`. Export to the Kali macvlan address and mount the Ubuntu macvlan address:
+
+```sh
+./scripts/nfs-lab.sh server 01 macvlan
+./scripts/nfs-lab.sh client 01 macvlan
+```
+
+That path shares the fleet LAN. Prefer `veth-peer` when you addressed it.
 
 ## Run
 
@@ -271,13 +368,13 @@ Host keys are created when the container starts (`ssh-keygen -A`). They are not 
 
 ## Ubuntu server packages
 
-ubuntu01–ubuntu30 and ubuntuserver share one local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04`. It is an Ubuntu server: `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, and `sudo`. `apt`, `ping` (`iputils-ping`), and `ip` (`iproute2`) are on the image. There is no desktop and no Webtop.
+ubuntu01–ubuntu30 and ubuntuserver share one local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04`. It is an Ubuntu server: `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, `sudo`, `nfs-kernel-server`, `nfs-common`, and `rpcbind`. `apt`, `ping` (`iputils-ping`), and `ip` (`iproute2`) are on the image. NFS is not started and `/sharedfolder` is not exported until the NFS lab runs on a pair. There is no desktop and no Webtop.
 
 SSH is the same account as before. ubuntu01–ubuntu30 take `SSH_USER` and `SSH_PUBLIC_KEY` or `SSH_PASSWORD` from `.env`. ubuntuserver and vai take `DESKTOP_USER` (default `van`) and `DESKTOP_PASSWORD` on that same image. Addresses stay on the macvlan: `10.0.253.11` through `10.0.253.40`, ubuntuserver at `10.0.253.41`, and vai at `10.0.253.42`.
 
 `vai` is that same Ubuntu server image, with `openssh` on port 22, plus `apt`, `ping`, `ip`, `curl`, and `sudo`. Sign in as `ssh van@vai.cybersecurity.lan` (or whatever `DESKTOP_USER` is). The password is `DESKTOP_PASSWORD` in `.env`, the same value ubuntuserver uses. There is no password in git. Its home is the named volume `cybersecurity-vai-config`, mounted at `/home/$DESKTOP_USER`. `lab.sh on` and `lab.sh off` do not start or stop it. `./scripts/lab.sh extra-containers-on` and `extra-containers-off` do, next to derek, vyas, kali111, ubuntu111, sang, and ashraful. It has no `fleet.reset` label, so the 02:00 job does not recreate it or wipe that volume.
 
-Those packages live in the image. The 02:00 reset still recreates ubuntu01–ubuntu30, because they are labeled `fleet.reset`. It still does not recreate ubuntuserver or vai. Recreate drops the writable layer (the account, `authorized_keys`, and the host keys) and keeps the image, so `apt`, `ping`, `ip`, `curl`, and `sudo` come back. A package installed later with `apt` sits on the writable layer, so the next recreate removes it. `./scripts/lab.sh on` and `off` still only start and stop kali01–kali30 and ubuntu01–ubuntu30.
+Those packages live in the image. The 02:00 reset still recreates ubuntu01–ubuntu30, because they are labeled `fleet.reset`. It still does not recreate ubuntuserver or vai. Recreate drops the writable layer (the account, `authorized_keys`, the host keys, `/sharedfolder`, and `/etc/exports`) and keeps the image, so `apt`, `ping`, `ip`, `curl`, `sudo`, and `nfs-kernel-server` come back. A package installed later with `apt` sits on the writable layer, so the next recreate removes it. `./scripts/lab.sh on` and `off` still only start and stop kali01–kali30 and ubuntu01–ubuntu30. The NFS lab is not started again until you run it.
 
 On the ProLiant, after `git pull`:
 
@@ -387,7 +484,7 @@ docker compose up -d --build --remove-orphans
 
 ## Resources
 
-There is one Kali image on disk. RAM is per running desktop: about 1–2 GB for the session, plus a tmpfs home up to `DESKTOP_TMPFS_SIZE` (default 2 GB, only written files count) and a 1 GB shared-memory ceiling. Thirty desktops at once is tens of GB of RAM. Lower `KALI_COUNT` on a small host. The Ubuntu image is built once from `ubuntu:24.04` with OpenSSH, `apt`, `ping`, `ip`, `curl`, and `sudo`. Each server is that image. It is not a desktop.
+There is one Kali image on disk. RAM is per running desktop: about 1–2 GB for the session, plus a tmpfs home up to `DESKTOP_TMPFS_SIZE` (default 2 GB, only written files count) and a 1 GB shared-memory ceiling. Thirty desktops at once is tens of GB of RAM. Lower `KALI_COUNT` on a small host. The Ubuntu image is built once from `ubuntu:24.04` with OpenSSH, `apt`, `ping`, `ip`, `curl`, `sudo`, and `nfs-kernel-server`. Each server is that image. It is not a desktop. NFS is not started until the NFS lab.
 
 Every container Compose defines has `mem_limit: 4g`: the Kali fleet, the Ubuntu fleet, the persistent desktops (kali111, sang, ubuntu100, ubuntu111, derek, vyas), ubuntuserver, Caddy, dnsmasq, the scheduler, and cloudflared. That is a ceiling. Docker does not reserve 4 GB for an idle container. Desktops still have `shm_size: "1gb"`: the Kali fleet, kali111, sang, ubuntu100, ubuntu111, derek, and vyas.
 
@@ -485,7 +582,7 @@ sudo ./scripts/lab-veth.sh
 Recreate replaces the container.
 
 - Kali home is a tmpfs on `/config`. The new container has an empty home. Packages written into the image layer rather than the home are discarded too.
-- Ubuntu fleet boxes have no volume. The writable layer goes away, including the account, `authorized_keys`, and the SSH host keys. The entrypoint creates the account again from `.env` and generates new host keys. `apt`, `ping`, `ip`, `curl`, and `sudo` stay, because they are in the image. `vai` is not in that set. Its home stays on `cybersecurity-vai-config`.
+- Ubuntu fleet boxes have no volume. The writable layer goes away, including the account, `authorized_keys`, the SSH host keys, `/sharedfolder`, and `/etc/exports`. The entrypoint creates the account again from `.env` and generates new host keys. `apt`, `ping`, `ip`, `curl`, `sudo`, and `nfs-kernel-server` stay, because they are in the image. The NFS lab is not started again. `vai` is not in that set. Its home stays on `cybersecurity-vai-config`.
 - derek, vyas, kali111, sang, and ashraful are not labeled `fleet.reset`. The job does not recreate them. `cybersecurity-derek-config`, `cybersecurity-vyas-config`, `cybersecurity-kali111-config`, `cybersecurity-sang-config`, and `cybersecurity-ashraful-config` stay. After switching derek from Mint to Kali, remove `cybersecurity-derek-config` once so the first Kali start is a clean `/config`.
 
 Caddy, dnsmasq, and the scheduler keep running. The scheduler is not recreated (that would kill the job). It mounts the Docker socket and runs as root, so it can control the daemon.
@@ -508,10 +605,11 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `.env.example` | Domain, timezone, NIC, subnet, counts, SSH placeholders |
 | `caddy/Caddyfile` | Generated. Internal CA and one site per Kali desktop |
 | `caddy/site/index.html` | Generated page on the apex name |
-| `ubuntu/` | Ubuntu Server image: OpenSSH, apt, ping, ip, curl, and sudo. Host keys at start. Not a desktop. |
+| `ubuntu/` | Ubuntu Server image: OpenSSH, apt, ping, ip, curl, sudo, nfs-kernel-server. Host keys at start. NFS is not started. Not a desktop. |
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
 | `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, ubuntu111, sang, ashraful, and vai. `dns-on` / `dns-off` start and stop only dnsmasq. `rebuild` rebuilds the shared Ubuntu image and force-recreates ubuntu01–ubuntu30 and ubuntuserver |
+| `scripts/nfs-lab.sh` | Student NFS lab on one pair. `addr` puts `192.168.101.1/24` on ubuntuNN `veth-peer` and `.2` on kaliNN. `server` exports `/sharedfolder` on Ubuntu to that peer. `client` mounts it on Kali at `/mnt/sharedfolder` |
 | `scripts/export-ca.sh` | Copy the Caddy root out of the volume |
 | `scripts/reset-now.sh` | Recreate both fleets now |
 
@@ -521,12 +619,14 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 
 `derek` uses the same `linuxserver/kali-linux:latest` image as sang and kali111. `vyas` uses `dockerscripts/linuxmint:cinnamon` (Linux Mint Cinnamon, Firefox). The Mint image has no HTTP port, so the entrypoint adds noVNC on port 3000. Registry index digest `sha256:094170fed2aaa379cd8c85f48fbf395dd7bfc2b19511b73f037cc340fe414342`. The linux/amd64 manifest is `sha256:02f4a0cb1561907d22865e2ed075c9c198443557d5884d316d3bfe0d3c268825`, pushed 26 October 2026.
 
-Ubuntu is a local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04` with `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, and `sudo`. `apt`, `ping`, and `ip` are on the image. ubuntu01–ubuntu30, ubuntuserver, and vai use it. It is not a browser desktop.
+Ubuntu is a local image, `cybersecurity-ubuntu-ssh:1`, built from `ubuntu:24.04` with `openssh-server`, `ca-certificates`, `curl`, `iputils-ping`, `iproute2`, `sudo`, `nfs-kernel-server`, `nfs-common`, and `rpcbind`. `apt`, `ping`, and `ip` are on the image. ubuntu01–ubuntu30, ubuntuserver, and vai use it. It is not a browser desktop. NFS is installed, not started.
 
 Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, Compose plugin `v5.6.0`, supercronic `v0.2.50`, dnsmasq image `alpine:3.22`.
 
 ## Troubleshooting
 
+- **NFS mount hangs or `rpc.nfsd` cannot access `/proc/fs/nfsd`.** The ProLiant has not loaded kernel nfsd. `sudo modprobe nfsd`, then `./scripts/nfs-lab.sh server` again. Use `docker compose exec --privileged`, not a plain `docker exec`. Start NFS on one Ubuntu at a time.
+- **`veth-peer` is missing, or `ip addr add` cannot find that device.** The cable is added by `sudo ./scripts/lab-veth.sh`. `./scripts/lab.sh rebuild` and the 02:00 job run that script. If the pair is down, `./scripts/lab.sh on` first.
 - **Ubuntu container exits immediately.** Neither `SSH_PUBLIC_KEY` nor `SSH_PASSWORD` is set, or `SSH_USER` is `root` or not a lowercase account name. `docker compose logs ubuntu01`.
 - **The ProLiant cannot ping `10.0.253.11` (`ubuntu01`). A lab PC can.** SSH from the ProLiant to that address times out the same way. Macvlan on the same NIC. Use `docker exec`, the shim above, or a terminal on kali111, sang, ubuntu111, ubuntu100, derek, or vyas.
 - **kali111 cannot ping `10.0.253.11` or `ubuntu01.cybersecurity.lan`.** That desktop was not recreated after the macvlan addresses landed. From the repo, `docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111 ubuntu100`. Leave derek out of that command until `cybersecurity-derek-config` has been removed for the Kali switch. vyas does not need a recreate for this.
