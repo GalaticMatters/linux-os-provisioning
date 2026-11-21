@@ -2,7 +2,9 @@
 # Pair kali01 with ubuntu01, through kali30 with ubuntu30, and kali111
 # with ubuntu111. Each pair gets one cable. Both ends are named veth-peer,
 # with no address and no default route. A pair that already has veth-peer
-# on both sides is left alone. Also add a macvlan shim so this server can
+# on both sides is left alone. ubuntu111 on Kata is skipped: the guest
+# would not see a host-injected cable. kali111 still reaches it on the
+# desktop bridge. Also add a macvlan shim so this server can
 # ping 10.0.253.11, and the persistent Ubuntu boxes through vai at
 # 10.0.253.42. The shim is the only way off the parent NIC: frames
 # from 10.0.253.1 never reach a macvlan child. vai has no veth-peer.
@@ -63,6 +65,24 @@ container_pid() {
     return 1
   fi
   printf '%s\n' "$pid"
+}
+
+# Kata's docker pid is the host-side shim netns, not the guest. A host-injected
+# veth-peer never appears inside ubuntu111. kali111 still reaches it on the
+# desktop bridge. Fleet pairs stay runc and still get the cable.
+is_kata_runtime() {
+  svc=$1
+  cid=$(docker compose ps -q "$svc" 2>/dev/null || true)
+  if [ -z "$cid" ]; then
+    return 1
+  fi
+  rt=$(docker inspect -f '{{.HostConfig.Runtime}}' "$cid" 2>/dev/null || true)
+  case "$rt" in
+    kata|kata-runtime|io.containerd.kata*)
+      return 0
+      ;;
+  esac
+  return 1
 }
 
 has_veth() {
@@ -158,6 +178,11 @@ pair_veth() {
     echo "skip $ubuntu (not running)"
   fi
   if [ -z "$kpid" ] || [ -z "$upid" ]; then
+    return 0
+  fi
+  if is_kata_runtime "$ubuntu"; then
+    echo "skip $ubuntu (Kata guest; $kali reaches it on the desktop bridge, not veth-peer)"
+    keep_kali_net "$kali" "$kpid"
     return 0
   fi
   if has_veth "$kpid" && has_veth "$upid"; then
