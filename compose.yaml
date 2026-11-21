@@ -7,6 +7,9 @@
 # Persistent desktops on desktop and macvlan: kali111 10.0.253.50, ubuntu111 10.0.253.51, ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54, sang 10.0.253.85, ashraful 10.0.253.86.
 # kali111, derek, sang, ashraful, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.
 # ubuntu111 is Kata Containers: runtime kata-runtime. Other services stay on runc.
+# Kata guest DNS cannot use Docker 127.0.0.11. ubuntu111 extra_hosts maps kali111
+# (and the other persistent desktops) to macvlan. Cloudflare still uses Docker DNS
+# on the desktop bridge for http://ubuntu111:3000. veth-peer is not injected into Kata.
 # extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.
 # The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.
 # veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.
@@ -20,6 +23,114 @@
 name: cybersecurity-lan
 
 x-lab-hosts: &lab-hosts
+  - "cybersecurity.lan:10.0.253.1"
+  - "kali01.cybersecurity.lan:10.0.253.1"
+  - "kali02.cybersecurity.lan:10.0.253.1"
+  - "kali03.cybersecurity.lan:10.0.253.1"
+  - "kali04.cybersecurity.lan:10.0.253.1"
+  - "kali05.cybersecurity.lan:10.0.253.1"
+  - "kali06.cybersecurity.lan:10.0.253.1"
+  - "kali07.cybersecurity.lan:10.0.253.1"
+  - "kali08.cybersecurity.lan:10.0.253.1"
+  - "kali09.cybersecurity.lan:10.0.253.1"
+  - "kali10.cybersecurity.lan:10.0.253.1"
+  - "kali11.cybersecurity.lan:10.0.253.1"
+  - "kali12.cybersecurity.lan:10.0.253.1"
+  - "kali13.cybersecurity.lan:10.0.253.1"
+  - "kali14.cybersecurity.lan:10.0.253.1"
+  - "kali15.cybersecurity.lan:10.0.253.1"
+  - "kali16.cybersecurity.lan:10.0.253.1"
+  - "kali17.cybersecurity.lan:10.0.253.1"
+  - "kali18.cybersecurity.lan:10.0.253.1"
+  - "kali19.cybersecurity.lan:10.0.253.1"
+  - "kali20.cybersecurity.lan:10.0.253.1"
+  - "kali21.cybersecurity.lan:10.0.253.1"
+  - "kali22.cybersecurity.lan:10.0.253.1"
+  - "kali23.cybersecurity.lan:10.0.253.1"
+  - "kali24.cybersecurity.lan:10.0.253.1"
+  - "kali25.cybersecurity.lan:10.0.253.1"
+  - "kali26.cybersecurity.lan:10.0.253.1"
+  - "kali27.cybersecurity.lan:10.0.253.1"
+  - "kali28.cybersecurity.lan:10.0.253.1"
+  - "kali29.cybersecurity.lan:10.0.253.1"
+  - "kali30.cybersecurity.lan:10.0.253.1"
+  - "kali111.cybersecurity.lan:10.0.253.1"
+  - "derek.cybersecurity.lan:10.0.253.1"
+  - "sang.cybersecurity.lan:10.0.253.1"
+  - "ashraful.cybersecurity.lan:10.0.253.1"
+  - "ubuntu100.cybersecurity.lan:10.0.253.1"
+  - "ubuntu111.cybersecurity.lan:10.0.253.1"
+  - "ubuntu01.cybersecurity.lan:10.0.253.11"
+  - "ubuntu01:10.0.253.11"
+  - "ubuntu02.cybersecurity.lan:10.0.253.12"
+  - "ubuntu02:10.0.253.12"
+  - "ubuntu03.cybersecurity.lan:10.0.253.13"
+  - "ubuntu03:10.0.253.13"
+  - "ubuntu04.cybersecurity.lan:10.0.253.14"
+  - "ubuntu04:10.0.253.14"
+  - "ubuntu05.cybersecurity.lan:10.0.253.15"
+  - "ubuntu05:10.0.253.15"
+  - "ubuntu06.cybersecurity.lan:10.0.253.16"
+  - "ubuntu06:10.0.253.16"
+  - "ubuntu07.cybersecurity.lan:10.0.253.17"
+  - "ubuntu07:10.0.253.17"
+  - "ubuntu08.cybersecurity.lan:10.0.253.18"
+  - "ubuntu08:10.0.253.18"
+  - "ubuntu09.cybersecurity.lan:10.0.253.19"
+  - "ubuntu09:10.0.253.19"
+  - "ubuntu10.cybersecurity.lan:10.0.253.20"
+  - "ubuntu10:10.0.253.20"
+  - "ubuntu11.cybersecurity.lan:10.0.253.21"
+  - "ubuntu11:10.0.253.21"
+  - "ubuntu12.cybersecurity.lan:10.0.253.22"
+  - "ubuntu12:10.0.253.22"
+  - "ubuntu13.cybersecurity.lan:10.0.253.23"
+  - "ubuntu13:10.0.253.23"
+  - "ubuntu14.cybersecurity.lan:10.0.253.24"
+  - "ubuntu14:10.0.253.24"
+  - "ubuntu15.cybersecurity.lan:10.0.253.25"
+  - "ubuntu15:10.0.253.25"
+  - "ubuntu16.cybersecurity.lan:10.0.253.26"
+  - "ubuntu16:10.0.253.26"
+  - "ubuntu17.cybersecurity.lan:10.0.253.27"
+  - "ubuntu17:10.0.253.27"
+  - "ubuntu18.cybersecurity.lan:10.0.253.28"
+  - "ubuntu18:10.0.253.28"
+  - "ubuntu19.cybersecurity.lan:10.0.253.29"
+  - "ubuntu19:10.0.253.29"
+  - "ubuntu20.cybersecurity.lan:10.0.253.30"
+  - "ubuntu20:10.0.253.30"
+  - "ubuntu21.cybersecurity.lan:10.0.253.31"
+  - "ubuntu21:10.0.253.31"
+  - "ubuntu22.cybersecurity.lan:10.0.253.32"
+  - "ubuntu22:10.0.253.32"
+  - "ubuntu23.cybersecurity.lan:10.0.253.33"
+  - "ubuntu23:10.0.253.33"
+  - "ubuntu24.cybersecurity.lan:10.0.253.34"
+  - "ubuntu24:10.0.253.34"
+  - "ubuntu25.cybersecurity.lan:10.0.253.35"
+  - "ubuntu25:10.0.253.35"
+  - "ubuntu26.cybersecurity.lan:10.0.253.36"
+  - "ubuntu26:10.0.253.36"
+  - "ubuntu27.cybersecurity.lan:10.0.253.37"
+  - "ubuntu27:10.0.253.37"
+  - "ubuntu28.cybersecurity.lan:10.0.253.38"
+  - "ubuntu28:10.0.253.38"
+  - "ubuntu29.cybersecurity.lan:10.0.253.39"
+  - "ubuntu29:10.0.253.39"
+  - "ubuntu30.cybersecurity.lan:10.0.253.40"
+  - "ubuntu30:10.0.253.40"
+  - "ubuntuserver.cybersecurity.lan:10.0.253.41"
+  - "ubuntuserver:10.0.253.41"
+  - "vai.cybersecurity.lan:10.0.253.42"
+  - "vai:10.0.253.42"
+x-ubuntu111-hosts: &ubuntu111-hosts
+  - "kali111:10.0.253.50"
+  - "ubuntu100:10.0.253.52"
+  - "derek:10.0.253.53"
+  - "vyas:10.0.253.54"
+  - "sang:10.0.253.85"
+  - "ashraful:10.0.253.86"
   - "cybersecurity.lan:10.0.253.1"
   - "kali01.cybersecurity.lan:10.0.253.1"
   - "kali02.cybersecurity.lan:10.0.253.1"
@@ -788,9 +899,10 @@ services:
       TITLE: Ubuntu111 desktop
     volumes:
       - ubuntu111-config:/config
+      - ./ubuntu/cont-init.d/98-kata-net:/custom-cont-init.d/98-kata-net:ro
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
       - ./ubuntu/custom-services.d/sshd:/custom-services.d/sshd:ro
-    extra_hosts: *lab-hosts
+    extra_hosts: *ubuntu111-hosts
     networks:
       desktop:
         gw_priority: 100

@@ -99,15 +99,17 @@ Each of kali01–kali30 stays on that bridge and also has a macvlan address, `10
 
 ## Lab interface
 
-`veth-peer` is a second cable with no address and no default route. kali01's `veth-peer` is the other end of ubuntu01's `veth-peer`. kali02 is cabled only to ubuntu02, through kali30 to ubuntu30, and kali111 to ubuntu111. It is not the path to `10.0.253.11`. ubuntuserver, vai, ubuntu100, derek, sang, and vyas do not have it.
+`veth-peer` is a second cable with no address and no default route. kali01's `veth-peer` is the other end of ubuntu01's `veth-peer`. kali02 is cabled only to ubuntu02, through kali30 to ubuntu30. It is not the path to `10.0.253.11`. ubuntuserver, vai, ubuntu100, derek, sang, and vyas do not have it.
 
-kali111 and ubuntu111 keep that cable until those two containers are recreated, **except ubuntu111 on Kata**: `lab-veth.sh` skips injecting `veth-peer` into a Kata guest. kali111 still reaches ubuntu111 as hostname `ubuntu111` on the `desktop` bridge (`http://ubuntu111:3000`). The 02:00 job recreates kali01–kali30 and ubuntu01–ubuntu30, and the cable is deleted with the old network namespace. After that recreate, the job runs `scripts/lab-veth.sh` again. A pair that already has `veth-peer` on both sides is left alone, so this does not reset the 111 lab. With the fleet up, put the student cables back now:
+**`veth-peer` is unsupported on Kata.** `scripts/lab-veth.sh` injects a veth into a runc netns (`ip link set … netns $pid`). ubuntu111 is a QEMU VM: that pid is the host-side shim, not the guest, so the cable never appears as `veth-peer` inside ubuntu111. The script skips ubuntu111 on purpose. It still pairs kali01–kali30 with ubuntu01–ubuntu30. Do not change that skip in order to “fix” 111; it would not put a NIC in the VM and it could disturb the fleet pairs.
+
+kali111 and ubuntu111 labs use the **desktop bridge** and **macvlan**, not veth-peer. kali111 still reaches ubuntu111 as hostname `ubuntu111` on `cybersecurity-desktop` (`http://ubuntu111:3000`), which is the same path Cloudflare already uses. From inside the Kata guest, `kali111` is extra_hosts to macvlan `10.0.253.50`. The 02:00 job recreates kali01–kali30 and ubuntu01–ubuntu30, and those cables are deleted with the old network namespace. After that recreate, the job runs `scripts/lab-veth.sh` again. A pair that already has `veth-peer` on both sides is left alone, so this does not reset the 111 lab. With the fleet up, put the student cables back now:
 
 ```sh
 sudo ./scripts/lab-veth.sh
 ```
 
-`docker exec kali01 ip link show veth-peer` and `docker exec ubuntu01 ip link show veth-peer` should both list the interface. The same check works for kali30 and ubuntu30. A line that says `skip kali01 (not running)` means that container is stopped; start the fleet with `./scripts/lab.sh on` and run the sudo command again.
+`docker exec kali01 ip link show veth-peer` and `docker exec ubuntu01 ip link show veth-peer` should both list the interface. The same check works for kali30 and ubuntu30. `docker exec ubuntu111 ip link show veth-peer` is expected to fail: there is no guest veth. A line that says `skip kali01 (not running)` means that container is stopped; start the fleet with `./scripts/lab.sh on` and run the sudo command again. `skip ubuntu111 (Kata guest; …)` is the 111 path working as designed.
 
 `kali01.cybersecurity.lan` is Caddy on `10.0.253.1`, which opens the desktop at `https://kali01:3001` on the bridge. `ubuntu01` is the macvlan address `10.0.253.11`, so that path does not use Caddy. NetworkManager on Kali ignores `veth-peer`. If it manages that cable it starts DHCP and can drop the bridge address, and the Kali name stops loading while Ubuntu SSH still works. `ip`, `dhclient`, and `dhcpd` still configure the lab cable.
 
@@ -131,13 +133,29 @@ The change is the runtime. Compose sets `runtime: kata-runtime` on ubuntu111 onl
 
 Sysbox (`sysbox-runc`) is no longer used. It still shared the ProLiant kernel, so `modprobe` / `nfsd` inside ubuntu111 failed. Kata is the Compose runtime that keeps the name `ubuntu111` on the desktop bridge **and** gives a guest kernel.
 
+### Networking (internet, kali111, DNS)
+
+ubuntu111 stays on two Compose networks: `desktop` (`cybersecurity-desktop`, default route, Cloudflare `http://ubuntu111:3000`) and `lan` (macvlan `10.0.253.51`). After a recreate, **internet is expected**: ping `1.1.1.1`, then `apt-get update` once the apt lock is free. kali111 stays reachable on that desktop bridge (Cloudflare and kali111 still resolve `ubuntu111` with Docker DNS). From inside ubuntu111, `kali111` is extra_hosts to `10.0.253.50`.
+
+A Kata guest does not see Docker’s embedded DNS at `127.0.0.11`. That address exists in the shim netns, not in the VM, so `apt` and `curl` look like “no internet” even when L3 is up. Compose `dns:` does not fix this on a user-defined bridge (Docker still writes `127.0.0.11`). `ubuntu/cont-init.d/98-kata-net` replaces that resolver with `1.1.1.1` / `8.8.8.8` and moves the default route onto the desktop veth (Docker NAT) so the macvlan gateway `10.0.253.1` is not used for internet. Kata itself does not run DHCP on those virtio NICs; do not `dhclient` them or the guest will drop the Docker addresses.
+
+Host Kata config is `/etc/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml`, with `internetworking_model = "tcfilter"` (veth → TAP, the Docker model) and `disable_new_netns = false`. `scripts/install-ubuntu111-kata.sh` writes that file even when Kata is already installed. `KATA_INTERNETWORKING=macvtap` is the fallback if tcfilter cannot attach the macvlan endpoint. Do not set `none` or `disable_new_netns = true`: that puts a TAP on the host and takes ubuntu111 off `cybersecurity-desktop`. Kata deprecated `bridge`.
+
 ### What to expect
 
 `uname -r` inside ubuntu111 should differ from the ProLiant. `modprobe` and kernel NFS (`nfsd`) **may** work there because they hit the guest kernel, not the host. That is the reason to switch.
 
 linuxserver webtop (`lscr.io/linuxserver/webtop:ubuntu-xfce`) plus Kata is not a supported pairing. Named volume `/config` and the bind mounts for sshd and the host route go through virtiofs. Selkies/webtop can want fuse. Kata does not give a real `--privileged` host. Those can fail even when the VM starts. Expect one of: desktop on `:3000`, SSH on 22 with a dead web UI, or the container restarting. `docker compose logs ubuntu111` is the truth. kali111 and cloudflared still use `http://ubuntu111:3000` on the desktop bridge either way.
 
-`scripts/lab-veth.sh` cannot put `veth-peer` inside the Kata guest. It skips ubuntu111. kali111 still reaches ubuntu111 on the desktop bridge; that is the path Cloudflare already uses.
+Webtop’s first start runs `apt`. Do **not** delete `/var/lib/apt/lists/lock`. See who holds it, then wait:
+
+```sh
+docker compose exec ubuntu111 fuser -v /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend
+# Wait until fuser prints nothing:
+while docker compose exec ubuntu111 fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do sleep 5; done
+```
+
+`scripts/lab-veth.sh` cannot put `veth-peer` inside the Kata guest. It skips ubuntu111. 111 labs stay on the desktop bridge and macvlan. Fleet kali01–30 pairs are unchanged.
 
 ### ProLiant host prerequisites
 
@@ -156,7 +174,7 @@ No `/dev/kvm` means VT-x/AMD-V is off in BIOS, or nested KVM is off. `modprobe k
 
 Do **not** run `docker rm $(docker ps -a -q) -f`. Do not restart dnsmasq. A new DNS name is not added. Do not set `"default-runtime": "kata-runtime"`.
 
-Install once, then recreate only ubuntu111:
+Install (or re-run to patch networking), then recreate only ubuntu111. Internet is expected after that recreate, once 98-kata-net has replaced `127.0.0.11` and webtop has dropped the apt lock:
 
 ```sh
 git pull
@@ -164,7 +182,7 @@ sudo ./scripts/install-ubuntu111-kata.sh
 docker compose up -d --force-recreate --no-deps ubuntu111
 ```
 
-`--no-deps` leaves Caddy, kali111, and dnsmasq alone. Do not `docker compose restart` dnsmasq. Do not run `lab.sh on` / `off` for this switch.
+`--no-deps` leaves Caddy, kali111, and dnsmasq alone. Do not `docker compose restart` dnsmasq. Do not run `lab.sh on` / `off` for this switch. Do not `sudo ./scripts/lab-veth.sh` to create a guest veth; ubuntu111 will not see it. Running lab-veth.sh is still fine for kali01–30.
 
 The install script is the same steps by hand:
 
@@ -186,10 +204,19 @@ echo 'ccbc0cbc591089d0c57012b78da64b23ef43e0bac0f869dc7bfebe8588c33986  kata-sta
 sudo apt-get install -y jq zstd
 sudo tar --zstd -xf kata-static-4.4.0-amd64.tar.zst -C /
 
+# Copy the QEMU runtime-rs config, then set Docker networking (tcfilter, not none).
+sudo mkdir -p /etc/kata-containers/runtime-rs
+sudo cp -a /opt/kata/share/defaults/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml \
+  /etc/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml
+sudo sed -i -E 's/^[[:space:]]*#?[[:space:]]*internetworking_model[[:space:]]*=.*/internetworking_model = "tcfilter"/' \
+  /etc/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml
+sudo sed -i -E 's/^[[:space:]]*#?[[:space:]]*disable_new_netns[[:space:]]*=.*/disable_new_netns = false/' \
+  /etc/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml
+
 # Merge into existing daemon.json. Keep bip / default-address-pools. Do not set default-runtime.
 sudo cp -a /etc/docker/daemon.json /etc/docker/daemon.json.bak-ubuntu111-kata
 sudo jq --arg shim /opt/kata/runtime-rs/bin/containerd-shim-kata-v2 \
-  --arg cfg /opt/kata/share/defaults/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml \
+  --arg cfg /etc/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml \
   '.runtimes = (.runtimes // {}) | .runtimes["kata-runtime"] = {runtimeType: $shim, options: {ConfigPath: $cfg}}' \
   /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.tmp
 sudo mv /etc/docker/daemon.json.tmp /etc/docker/daemon.json
@@ -202,6 +229,14 @@ docker compose up -d --force-recreate --no-deps ubuntu111
 If reload does not list `kata-runtime`, `systemctl restart docker` is the fallback. `restart: unless-stopped` brings the other containers back, including dnsmasq. Do not then `docker compose restart` dnsmasq.
 
 `docker inspect ubuntu111 --format '{{.HostConfig.Runtime}}'` should print `kata-runtime`. Inside the guest, `uname -r` should not match the ProLiant.
+
+```sh
+docker inspect ubuntu111 --format '{{.HostConfig.Runtime}}'
+docker compose exec ubuntu111 cat /etc/resolv.conf
+# nameserver 1.1.1.1  — not 127.0.0.11
+docker compose exec ubuntu111 ping -c 2 1.1.1.1
+docker compose exec ubuntu111 ping -c 2 10.0.253.50
+```
 
 ### Uninstall Sysbox?
 
@@ -305,7 +340,7 @@ Run NFS on one Ubuntu at a time. Kernel nfsd is shared by the host.
 
 ### Skip veth-peer (macvlan)
 
-ubuntu01 is already `10.0.253.11`. kali01 is already `10.0.253.55`. In general ubuntuNN is `10.0.253.(10+N)` and kaliNN is `10.0.253.(54+N)`. Export to the Kali macvlan address and mount the Ubuntu macvlan address:
+ubuntu01 is already `10.0.253.11`. kali01 is already `10.0.253.55`. In general ubuntuNN is `10.0.253.(10+N)` and kaliNN is `10.0.253.(54+N)`. Export to the Kali macvlan address and mount the Ubuntu macvlan address. kali111 / ubuntu111 have no guest `veth-peer` (Kata); use this macvlan path or the desktop bridge, not `nfs-lab.sh addr`.
 
 ```sh
 ./scripts/nfs-lab.sh server 01 macvlan
@@ -663,7 +698,7 @@ The job runs [`scheduler/reset-desktops.sh`](scheduler/reset-desktops.sh), which
 2. Selects every service labeled `fleet.reset: "true"` (the fleet Kali desktops and the fleet Ubuntu SSH servers).
 3. Runs `docker compose up -d --force-recreate --no-deps --renew-anon-volumes` for those services only.
 4. Restarts Caddy so it drops cached Kali addresses. Caddy is not recreated, and its CA volume is not removed.
-5. Runs `scripts/lab-veth.sh` so kali01 is paired with ubuntu01 again, through kali30 with ubuntu30. kali111 and ubuntu111 are not recreated. ubuntu111 on Kata is skipped for `veth-peer`; kali111 still reaches it on the desktop bridge.
+5. Runs `scripts/lab-veth.sh` so kali01 is paired with ubuntu01 again, through kali30 with ubuntu30. kali111 and ubuntu111 are not recreated. ubuntu111 on Kata is skipped for `veth-peer` (unsupported in the guest); kali111 still reaches it on the desktop bridge. Fleet veth pairs stay runc.
 
 The scheduler image has to include `ip` and `nsenter` for step 5. After `git pull`:
 
@@ -703,7 +738,8 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
 | `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, ubuntu111, sang, ashraful, and vai. `dns-on` / `dns-off` start and stop only dnsmasq. `rebuild` rebuilds the shared Ubuntu image and force-recreates ubuntu01–ubuntu30 and ubuntuserver |
-| `scripts/install-ubuntu111-kata.sh` | ProLiant one-time Kata Containers 4.4.0 install so ubuntu111 can use `runtime: kata-runtime`. Does not `docker rm` the fleet, does not change the default Docker runtime, and does not start ubuntu111 |
+| `scripts/install-ubuntu111-kata.sh` | ProLiant Kata Containers 4.4.0 install plus host networking (`tcfilter`, ConfigPath under `/etc/kata-containers`). Re-run to patch networking without downloading again. Does not `docker rm` the fleet, does not change the default Docker runtime, and does not start ubuntu111 |
+| `ubuntu/cont-init.d/98-kata-net` | ubuntu111 only. Replaces Docker `127.0.0.11` DNS and prefers the desktop-bridge default route. Does not delete apt locks |
 | `scripts/install-ubuntu111-sandbox.sh` | Wrapper. Runs `install-ubuntu111-kata.sh`. Sysbox is gone. |
 | `scripts/nfs-lab.sh` | Student NFS lab on one pair. `addr` puts `192.168.101.1/24` on ubuntuNN `veth-peer` and `.2` on kaliNN. `server` exports `/sharedfolder` on Ubuntu to that peer. `client` mounts it on Kali at `/mnt/sharedfolder` |
 | `scripts/export-ca.sh` | Copy the Caddy root out of the volume |
@@ -721,13 +757,15 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 
 ## Troubleshooting
 
+- **ubuntu111 has no internet after switching to Kata.** Docker’s resolver `127.0.0.11` is not in the VM, and the macvlan default route (`10.0.253.1`) is not Docker NAT. `git pull`, `sudo ./scripts/install-ubuntu111-kata.sh` (writes `internetworking_model = "tcfilter"`), then `docker compose up -d --force-recreate --no-deps ubuntu111`. After start, `cat /etc/resolv.conf` inside the guest should show `1.1.1.1`, not `127.0.0.11`. Ping `1.1.1.1`, then `10.0.253.50` (kali111). Internet is expected after that recreate. If L3 is still down, retry the installer with `sudo KATA_INTERNETWORKING=macvtap ./scripts/install-ubuntu111-kata.sh` and recreate again. Do not set `none` / `disable_new_netns`.
+- **`/var/lib/apt/lists/lock` is held inside ubuntu111.** Webtop or `apt-get` is still running. Do **not** `rm` that lock (or `/var/lib/dpkg/lock-frontend`). `docker compose exec ubuntu111 fuser -v /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend`, then wait until `fuser` is quiet. If internet was down, fix networking first (row above) so the holder can finish instead of hanging.
 - **`Unknown runtime specified kata-runtime` on ubuntu111.** Kata is not installed, or dockerd has not picked up `/etc/docker/daemon.json`. On the ProLiant, `sudo ./scripts/install-ubuntu111-kata.sh`, then `docker info | grep -i runtime` should list `kata-runtime`. Recreate only ubuntu111: `docker compose up -d --force-recreate --no-deps ubuntu111`. Do not restart dnsmasq.
 - **`Unknown runtime specified sysbox-runc` on ubuntu111.** That container was not recreated after the Kata switch, or Compose is still the Sysbox revision. `git pull`, then `docker compose up -d --force-recreate --no-deps ubuntu111`.
 - **No `/dev/kvm`, or ubuntu111 dies with QEMU/KVM errors.** VT-x/AMD-V is off, or this Ubuntu is a VM without nested virt. `systemd-detect-virt`, `ls -l /dev/kvm`, `grep -E -o '(vmx|svm)' /proc/cpuinfo`. Bare-metal ProLiant should show `none` and `/dev/kvm`.
 - **ubuntu111 starts as Kata but the webtop is 502 / restarting.** Expected risk. linuxserver webtop plus Kata can fail on virtiofs volumes, fuse, or missing privileged. `docker compose logs ubuntu111`. kali111 still uses `http://ubuntu111:3000` on the desktop bridge. SSH may work when the browser desktop does not.
 - **`modprobe` / `nfsd` inside ubuntu111.** May work now (guest kernel). If it still fails, that is a Kata/webtop limit, not the fleet NFS lab. ubuntu01/kali01 stay runc and still need `sudo modprobe nfsd` on the ProLiant.
 - **NFS mount hangs or `rpc.nfsd` cannot access `/proc/fs/nfsd`.** The ProLiant has not loaded kernel nfsd. `sudo modprobe nfsd`, then `./scripts/nfs-lab.sh server` again. Use `docker compose exec --privileged`, not a plain `docker exec`. Start NFS on one Ubuntu at a time.
-- **`veth-peer` is missing, or `ip addr add` cannot find that device.** The cable is added by `sudo ./scripts/lab-veth.sh`. `./scripts/lab.sh rebuild` and the 02:00 job run that script. If the pair is down, `./scripts/lab.sh on` first.
+- **`veth-peer` is missing, or `ip addr add` cannot find that device.** On kali01–30 / ubuntu01–30 the cable is added by `sudo ./scripts/lab-veth.sh`. `./scripts/lab.sh rebuild` and the 02:00 job run that script. If the pair is down, `./scripts/lab.sh on` first. On **ubuntu111**, `veth-peer` is unsupported (Kata VM). Use the desktop bridge and macvlan `10.0.253.50` / `10.0.253.51`. Do not inject a veth into the shim netns to “fix” it.
 - **Ubuntu container exits immediately.** Neither `SSH_PUBLIC_KEY` nor `SSH_PASSWORD` is set, or `SSH_USER` is `root` or not a lowercase account name. `docker compose logs ubuntu01`.
 - **The ProLiant cannot ping `10.0.253.11` (`ubuntu01`). A lab PC can.** SSH from the ProLiant to that address times out the same way. Macvlan on the same NIC. Use `docker exec`, the shim above, or a terminal on kali111, sang, ubuntu111, ubuntu100, derek, or vyas.
 - **kali111 cannot ping `10.0.253.11` or `ubuntu01.cybersecurity.lan`.** That desktop was not recreated after the macvlan addresses landed. From the repo, `docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111 ubuntu100`. Leave derek out of that command until `cybersecurity-derek-config` has been removed for the Kali switch. vyas does not need a recreate for this.

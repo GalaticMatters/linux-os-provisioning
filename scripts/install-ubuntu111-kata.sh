@@ -1,9 +1,11 @@
 #!/bin/sh
-# One-time ProLiant install of Kata Containers so ubuntu111 can use
-# runtime: kata-runtime. Docker CE on Ubuntu, KVM/QEMU. Does not docker rm
-# the fleet. Does not change Docker's default runtime (fleet stays runc).
-# Does not start or recreate ubuntu111. Does not uninstall Sysbox.
-# After this, from the repo:
+# ProLiant install of Kata Containers so ubuntu111 can use runtime:
+# kata-runtime. Also patches host Kata networking (tcfilter, /etc copy of
+# the QEMU runtime-rs config). Re-run after git pull; it does not download
+# again when the shim is already there. Docker CE on Ubuntu, KVM/QEMU.
+# Does not docker rm the fleet. Does not change Docker's default runtime
+# (fleet stays runc). Does not start or recreate ubuntu111. Does not
+# uninstall Sysbox. After this, from the repo:
 #   docker compose up -d --force-recreate --no-deps ubuntu111
 set -eu
 
@@ -13,8 +15,12 @@ KATA_TAR="kata-static-${KATA_VER}-${KATA_ARCH}.tar.zst"
 KATA_SHA256=ccbc0cbc591089d0c57012b78da64b23ef43e0bac0f869dc7bfebe8588c33986
 KATA_URL="https://github.com/kata-containers/kata-containers/releases/download/${KATA_VER}/${KATA_TAR}"
 KATA_SHIM=/opt/kata/runtime-rs/bin/containerd-shim-kata-v2
-KATA_CONFIG=/opt/kata/share/defaults/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml
+KATA_PACKAGED_CONFIG=/opt/kata/share/defaults/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml
+KATA_CONFIG=/etc/kata-containers/runtime-rs/configuration-qemu-runtime-rs.toml
 DOCKER_RUNTIME=kata-runtime
+# tcfilter is Kata's Docker model (veth in the shim netns → TAP in QEMU).
+# macvtap is KATA_INTERNETWORKING=macvtap. Do not set none/disable_new_netns:
+# that puts the TAP on the host and drops ubuntu111 off cybersecurity-desktop.
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Run as root: sudo $0" >&2
@@ -95,16 +101,54 @@ runtime_registered() {
     | grep -Fx "$DOCKER_RUNTIME" >/dev/null
 }
 
-if [ -x "$KATA_SHIM" ] && [ -f "$KATA_CONFIG" ] && runtime_registered; then
-  echo "${DOCKER_RUNTIME} is already registered. Default runtime stays ${default_rt:-runc}."
-  docker info | grep -i runtime || true
-  echo "Recreate only ubuntu111 (do not restart dnsmasq):"
-  echo "  docker compose up -d --force-recreate --no-deps ubuntu111"
-  exit 0
-fi
+patch_kata_network_config() {
+  model=${KATA_INTERNETWORKING:-tcfilter}
+  case "$model" in
+    tcfilter|macvtap) ;;
+    bridge)
+      echo "Kata deprecated internetworking_model=bridge. Using tcfilter so ubuntu111 stays on the Docker desktop bridge."
+      model=tcfilter
+      ;;
+    none)
+      echo "internetworking_model=none needs disable_new_netns and a host TAP. ubuntu111 would leave cybersecurity-desktop." >&2
+      exit 1
+      ;;
+    *)
+      echo "KATA_INTERNETWORKING must be tcfilter or macvtap, got $model" >&2
+      exit 1
+      ;;
+  esac
+  mkdir -p /etc/kata-containers/runtime-rs
+  if [ ! -f "$KATA_PACKAGED_CONFIG" ]; then
+    echo "Packaged Kata config missing: $KATA_PACKAGED_CONFIG" >&2
+    exit 1
+  fi
+  if [ ! -f "$KATA_CONFIG" ]; then
+    cp -a "$KATA_PACKAGED_CONFIG" "$KATA_CONFIG"
+  fi
+  # Keep the /etc copy even if it already existed; only rewrite the two keys.
+  if grep -qE '^[[:space:]]*#?[[:space:]]*internetworking_model[[:space:]]*=' "$KATA_CONFIG"; then
+    sed -i -E "s/^[[:space:]]*#?[[:space:]]*internetworking_model[[:space:]]*=.*/internetworking_model = \"${model}\"/" "$KATA_CONFIG"
+  else
+    printf '\ninternetworking_model = "%s"\n' "$model" >> "$KATA_CONFIG"
+  fi
+  if grep -qE '^[[:space:]]*#?[[:space:]]*disable_new_netns[[:space:]]*=' "$KATA_CONFIG"; then
+    sed -i -E 's/^[[:space:]]*#?[[:space:]]*disable_new_netns[[:space:]]*=.*/disable_new_netns = false/' "$KATA_CONFIG"
+  else
+    printf '\ndisable_new_netns = false\n' >> "$KATA_CONFIG"
+  fi
+  echo "Kata networking: internetworking_model=${model} disable_new_netns=false"
+  echo "Config: $KATA_CONFIG"
+  grep -E '^(internetworking_model|disable_new_netns) ' "$KATA_CONFIG" || true
+}
 
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y jq zstd ca-certificates
+need_packages=0
+command -v jq >/dev/null 2>&1 || need_packages=1
+command -v zstd >/dev/null 2>&1 || need_packages=1
+if [ "$need_packages" -eq 1 ] || [ ! -x "$KATA_SHIM" ] || [ ! -f "$KATA_PACKAGED_CONFIG" ]; then
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y jq zstd ca-certificates
+fi
 
 download() {
   url=$1
@@ -119,7 +163,7 @@ download() {
   fi
 }
 
-if [ ! -x "$KATA_SHIM" ] || [ ! -f "$KATA_CONFIG" ]; then
+if [ ! -x "$KATA_SHIM" ] || [ ! -f "$KATA_PACKAGED_CONFIG" ]; then
   tmpdir=$(mktemp -d)
   trap 'rm -rf "$tmpdir"' EXIT
   cd "$tmpdir"
@@ -136,17 +180,18 @@ if [ ! -x "$KATA_SHIM" ]; then
   echo "Kata shim missing after install: $KATA_SHIM" >&2
   exit 1
 fi
-if [ ! -f "$KATA_CONFIG" ]; then
-  echo "Kata QEMU runtime-rs config missing: $KATA_CONFIG" >&2
+if [ ! -f "$KATA_PACKAGED_CONFIG" ]; then
+  echo "Kata QEMU runtime-rs config missing: $KATA_PACKAGED_CONFIG" >&2
   exit 1
 fi
+
+patch_kata_network_config
 
 daemon=/etc/docker/daemon.json
 mkdir -p /etc/docker
 if [ ! -s "$daemon" ]; then
   printf '%s\n' '{}' > "$daemon"
 fi
-cp -a "$daemon" "$daemon.bak-ubuntu111-kata"
 merged=$(mktemp)
 if ! jq --arg shim "$KATA_SHIM" --arg cfg "$KATA_CONFIG" --arg name "$DOCKER_RUNTIME" '
   if type != "object" then {} else . end
@@ -156,16 +201,25 @@ if ! jq --arg shim "$KATA_SHIM" --arg cfg "$KATA_CONFIG" --arg name "$DOCKER_RUN
       options: { ConfigPath: $cfg }
     }
 ' "$daemon" > "$merged"; then
-  echo "Could not merge $daemon. Left the backup at $daemon.bak-ubuntu111-kata" >&2
+  echo "Could not merge $daemon." >&2
   rm -f "$merged"
   exit 1
 fi
 # Never write default-runtime. jq above only adds runtimes.kata-runtime.
-mv "$merged" "$daemon"
+daemon_changed=0
+if ! cmp -s "$daemon" "$merged"; then
+  cp -a "$daemon" "$daemon.bak-ubuntu111-kata"
+  mv "$merged" "$daemon"
+  daemon_changed=1
+else
+  rm -f "$merged"
+fi
 
 # Prefer reload so the fleet is not bounced. Kata docs restart dockerd if needed.
-if systemctl reload docker; then
-  sleep 1
+if [ "$daemon_changed" -eq 1 ] || ! runtime_registered; then
+  if systemctl reload docker; then
+    sleep 1
+  fi
 fi
 if ! runtime_registered; then
   echo "Reload did not list ${DOCKER_RUNTIME}; restarting dockerd."
@@ -192,4 +246,6 @@ echo "Default runtime is unchanged (${default_rt:-runc}). Fleet stays runc."
 docker info | grep -i runtime || true
 echo "Recreate only ubuntu111 (do not restart dnsmasq):"
 echo "  docker compose up -d --force-recreate --no-deps ubuntu111"
+echo "Internet is expected after that recreate (guest DNS 1.1.1.1, default route on the desktop bridge)."
+echo "veth-peer will not appear inside ubuntu111. kali111 uses the desktop bridge / macvlan."
 echo "Sysbox is unused after that recreate. Uninstall is optional; this script does not remove it."

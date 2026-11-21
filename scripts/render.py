@@ -294,7 +294,7 @@ def check_fleet_kali(
         seen.add(addr)
 
 
-def dual_lan(addr: str) -> list[str]:
+def dual_lan(addr: str, extra_hosts: str = "*lab-hosts") -> list[str]:
     """Bridge plus macvlan. The bridge keeps the default route.
 
     Cloudflare and Caddy resolve the container name on `desktop`.
@@ -303,7 +303,7 @@ def dual_lan(addr: str) -> list[str]:
     SSH to the Ubuntu fleet leave on the LAN interface.
     """
     return [
-        "    extra_hosts: *lab-hosts",
+        f"    extra_hosts: {extra_hosts}",
         "    networks:",
         "      desktop:",
         "        gw_priority: 100",
@@ -312,7 +312,7 @@ def dual_lan(addr: str) -> list[str]:
     ]
 
 
-def lab_host_lines(
+def lab_host_entries(
     domain: str,
     server: str,
     kali: list[str],
@@ -327,13 +327,37 @@ def lab_host_lines(
     the container for Caddy's https://kali01:3001 hop. Ubuntu short names
     and FQDNs both point at the macvlan address.
     """
-    lines = ["x-lab-hosts: &lab-hosts"]
-    lines.append(f'  - "{domain}:{server}"')
+    entries = [f"{domain}:{server}"]
     for name in kali + CADDY_LAN_DESKTOPS:
-        lines.append(f'  - "{name}.{domain}:{server}"')
+        entries.append(f"{name}.{domain}:{server}")
     for name, addr in list(ubuntu) + list(extra):
-        lines.append(f'  - "{name}.{domain}:{addr}"')
+        entries.append(f"{name}.{domain}:{addr}")
+        entries.append(f"{name}:{addr}")
+    return entries
+
+
+def lab_host_lines(
+    domain: str,
+    server: str,
+    kali: list[str],
+    ubuntu: list[tuple[str, str]],
+    extra: list[tuple[str, str]],
+) -> list[str]:
+    entries = lab_host_entries(domain, server, kali, ubuntu, extra)
+    lines = ["x-lab-hosts: &lab-hosts"]
+    for item in entries:
+        lines.append(f'  - "{item}"')
+    # Kata guest cannot use Docker 127.0.0.11. Short names of the other
+    # persistent desktops go to their macvlan addresses. kali111 still
+    # uses *lab-hosts, so Docker DNS keeps http://ubuntu111:3000 on the
+    # desktop bridge for Cloudflare and kali111.
+    lines.append("x-ubuntu111-hosts: &ubuntu111-hosts")
+    for name, addr in PERSISTENT_DESKTOPS:
+        if name == "ubuntu111":
+            continue
         lines.append(f'  - "{name}:{addr}"')
+    for item in entries:
+        lines.append(f'  - "{item}"')
     lines.append("")
     return lines
 
@@ -454,6 +478,9 @@ def render_compose(
         f"# Persistent desktops on desktop and macvlan: {desktop_note}.",
         "# kali111, derek, sang, ashraful, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.",
         "# ubuntu111 is Kata Containers: runtime kata-runtime. Other services stay on runc.",
+        "# Kata guest DNS cannot use Docker 127.0.0.11. ubuntu111 extra_hosts maps kali111",
+        "# (and the other persistent desktops) to macvlan. Cloudflare still uses Docker DNS",
+        "# on the desktop bridge for http://ubuntu111:3000. veth-peer is not injected into Kata.",
         "# extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.",
         "# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.",
         "# veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.",
@@ -615,9 +642,10 @@ def render_compose(
         "      TITLE: Ubuntu111 desktop",
         "    volumes:",
         "      - ubuntu111-config:/config",
+        "      - ./ubuntu/cont-init.d/98-kata-net:/custom-cont-init.d/98-kata-net:ro",
         "      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro",
         "      - ./ubuntu/custom-services.d/sshd:/custom-services.d/sshd:ro",
-        *dual_lan(persistent_addr("ubuntu111")),
+        *dual_lan(persistent_addr("ubuntu111"), extra_hosts="*ubuntu111-hosts"),
         "    logging: *json-logs",
         "    healthcheck:",
         '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3000\'"]',

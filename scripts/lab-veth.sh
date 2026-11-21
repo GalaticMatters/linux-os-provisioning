@@ -1,12 +1,15 @@
 #!/bin/sh
 # Pair kali01 with ubuntu01, through kali30 with ubuntu30, and kali111
-# with ubuntu111. Each pair gets one cable. Both ends are named veth-peer,
-# with no address and no default route. A pair that already has veth-peer
-# on both sides is left alone. ubuntu111 on Kata is skipped: the guest
-# would not see a host-injected cable. kali111 still reaches it on the
-# desktop bridge. Also add a macvlan shim so this server can
-# ping 10.0.253.11, and the persistent Ubuntu boxes through vai at
-# 10.0.253.42. The shim is the only way off the parent NIC: frames
+# with ubuntu111 when ubuntu111 is runc. Each pair gets one cable. Both
+# ends are named veth-peer, with no address and no default route. A pair
+# that already has veth-peer on both sides is left alone.
+# veth-peer is unsupported on Kata: lab-veth.sh nsenters the Docker
+# netns, which is the host-side shim, not the QEMU guest. ubuntu111 on
+# Kata is skipped. kali01–kali30 / ubuntu01–ubuntu30 stay runc and still
+# get the cable. kali111 reaches ubuntu111 on the desktop bridge and on
+# macvlan 10.0.253.51, not veth-peer. Also add a macvlan shim so this
+# server can ping 10.0.253.11, and the persistent Ubuntu boxes through
+# vai at 10.0.253.42. The shim is the only way off the parent NIC: frames
 # from 10.0.253.1 never reach a macvlan child. vai has no veth-peer.
 set -u
 
