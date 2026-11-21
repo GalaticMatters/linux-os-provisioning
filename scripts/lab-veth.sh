@@ -1,16 +1,17 @@
 #!/bin/sh
 # Pair kali01 with ubuntu01, through kali30 with ubuntu30, and kali111
-# with ubuntu111 when ubuntu111 is runc. Each pair gets one cable. Both
-# ends are named veth-peer, with no address and no default route. A pair
-# that already has veth-peer on both sides is left alone.
-# veth-peer is unsupported on Kata: lab-veth.sh nsenters the Docker
-# netns, which is the host-side shim, not the QEMU guest. ubuntu111 on
-# Kata is skipped. kali01–kali30 / ubuntu01–ubuntu30 stay runc and still
-# get the cable. kali111 reaches ubuntu111 on the desktop bridge and on
-# macvlan 10.0.253.51, not veth-peer. Also add a macvlan shim so this
-# server can ping 10.0.253.11, and the persistent Ubuntu boxes through
-# vai at 10.0.253.42. The shim is the only way off the parent NIC: frames
-# from 10.0.253.1 never reach a macvlan child. vai has no veth-peer.
+# with ubuntu111. Fleet pairs (runc) get a host veth moved into each
+# netns. Both ends are named veth-peer, with no address and no default
+# route. A runc pair that already has veth-peer on both sides is left
+# alone. ubuntu111 is Kata: the Docker pid is the shim, so a host veth
+# never appears in the guest. That pair uses Compose network
+# cybersecurity-veth111 (Kata extra virtio NIC / hotplug), renamed to
+# veth-peer inside the guest and on kali111. kali01–kali30 /
+# ubuntu01–ubuntu30 stay runc host-veth pairs. Also add a macvlan shim
+# so this server can ping 10.0.253.11, and the persistent Ubuntu boxes
+# through vai at 10.0.253.42. The shim is the only way off the parent
+# NIC: frames from 10.0.253.1 never reach a macvlan child. vai has no
+# veth-peer.
 set -u
 
 cd "$(dirname "$0")/.."
@@ -70,9 +71,19 @@ container_pid() {
   printf '%s\n' "$pid"
 }
 
+# Kata extra NIC for ubuntu111 (test only). Not attached to the fleet.
+VETH111_NET=cybersecurity-veth111
+VETH111_SUBNET=10.255.111.0/24
+VETH111_GW=10.255.111.254
+VETH111_UBUNTU_IP=10.255.111.1
+VETH111_KALI_IP=10.255.111.2
+VETH111_UBUNTU_MAC=02:42:ff:6f:01:01
+VETH111_KALI_MAC=02:42:ff:6f:02:02
+RENAME_VETH="$PWD/scripts/rename-veth-peer.sh"
+
 # Kata's docker pid is the host-side shim netns, not the guest. A host-injected
-# veth-peer never appears inside ubuntu111. kali111 still reaches it on the
-# desktop bridge. Fleet pairs stay runc and still get the cable.
+# veth-peer never appears inside ubuntu111. Fleet pairs stay runc and still
+# get the cable. ubuntu111 uses a Kata extra virtio NIC instead.
 is_kata_runtime() {
   svc=$1
   cid=$(docker compose ps -q "$svc" 2>/dev/null || true)
@@ -121,6 +132,12 @@ fi' || true
       if [ -z "$ip" ] || [ -z "$prefix" ] || [ -z "$mac" ]; then
         continue
       fi
+      case "$name" in
+        *veth111*) continue ;;
+      esac
+      case "$ip" in
+        10.255.111.*) continue ;;
+      esac
       # ip -o link prints eth0@if3320: — the kernel device is eth0.
       raw=$(nsenter -t "$pid" -n ip -o link show | awk -v mac="$mac" 'BEGIN { mac = tolower(mac) } tolower($0) ~ mac { print $2; exit }')
       iface=$(iface_name "$raw")
@@ -167,6 +184,97 @@ fi' || true
     done
 }
 
+guest_has_veth() {
+  svc=$1
+  cid=$(docker compose ps -q "$svc" 2>/dev/null || true)
+  if [ -z "$cid" ]; then
+    return 1
+  fi
+  docker exec "$cid" ip link show veth-peer >/dev/null 2>&1
+}
+
+ensure_veth111_network() {
+  if docker network inspect "$VETH111_NET" >/dev/null 2>&1; then
+    return 0
+  fi
+  if docker network create \
+    --driver bridge \
+    --internal \
+    --subnet "$VETH111_SUBNET" \
+    --gateway "$VETH111_GW" \
+    -o com.docker.network.bridge.enable_ip_masquerade=false \
+    "$VETH111_NET" >/dev/null; then
+    echo "created $VETH111_NET for ubuntu111 Kata veth-peer"
+    return 0
+  fi
+  echo "could not create $VETH111_NET" >&2
+  return 1
+}
+
+on_veth111() {
+  cid=$1
+  docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$cid" 2>/dev/null |
+    grep -q veth111
+}
+
+connect_veth111() {
+  svc=$1
+  ipaddr=$2
+  cid=$(docker compose ps -q "$svc" 2>/dev/null || true)
+  if [ -z "$cid" ]; then
+    echo "skip $svc (not running)" >&2
+    return 1
+  fi
+  if on_veth111 "$cid"; then
+    return 0
+  fi
+  if docker network connect --ip "$ipaddr" "$VETH111_NET" "$cid"; then
+    echo "connected $svc to $VETH111_NET ($ipaddr) (Kata extra NIC / hotplug)"
+    return 0
+  fi
+  echo "could not connect $svc to $VETH111_NET" >&2
+  return 1
+}
+
+rename_guest_veth() {
+  svc=$1
+  mac=$2
+  cid=$(docker compose ps -q "$svc" 2>/dev/null || true)
+  if [ -z "$cid" ]; then
+    return 1
+  fi
+  if [ ! -f "$RENAME_VETH" ]; then
+    echo "missing $RENAME_VETH" >&2
+    return 1
+  fi
+  # docker exec on Kata runs in the guest, not the shim. stdin so this
+  # works before the container is recreated onto the new bind mounts.
+  docker exec -i \
+    -e "VETH_PEER_MAC=$mac" \
+    -e "VETH_PEER_SUBNET=$VETH111_SUBNET" \
+    "$cid" /bin/sh < "$RENAME_VETH"
+}
+
+pair_kata_veth() {
+  kali=$1
+  ubuntu=$2
+  kpid=$3
+  if ! ensure_veth111_network; then
+    keep_kali_net "$kali" "$kpid"
+    return 0
+  fi
+  connect_veth111 "$ubuntu" "$VETH111_UBUNTU_IP" || true
+  connect_veth111 "$kali" "$VETH111_KALI_IP" || true
+  rename_guest_veth "$ubuntu" "$VETH111_UBUNTU_MAC" || true
+  rename_guest_veth "$kali" "$VETH111_KALI_MAC" || true
+  keep_kali_net "$kali" "$kpid"
+  if guest_has_veth "$ubuntu" && guest_has_veth "$kali"; then
+    echo "$kali and $ubuntu are paired on veth-peer (Kata extra virtio NIC on $VETH111_NET)"
+  else
+    echo "$ubuntu Kata veth-peer is not in the guest yet; recreate ubuntu111, then re-run this script" >&2
+  fi
+}
+
 pair_veth() {
   kali=$1
   ubuntu=$2
@@ -184,8 +292,7 @@ pair_veth() {
     return 0
   fi
   if is_kata_runtime "$ubuntu"; then
-    echo "skip $ubuntu (Kata guest; $kali reaches it on the desktop bridge, not veth-peer)"
-    keep_kali_net "$kali" "$kpid"
+    pair_kata_veth "$kali" "$ubuntu" "$kpid"
     return 0
   fi
   if has_veth "$kpid" && has_veth "$upid"; then

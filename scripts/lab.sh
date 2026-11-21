@@ -44,6 +44,9 @@ case "${1:-}" in
     exec docker stop $ids
     ;;
   extra-containers-on)
+    if ! docker image inspect cybersecurity-ubuntu111:1 >/dev/null 2>&1; then
+      docker compose build ubuntu111
+    fi
     docker compose up -d derek vyas kali111 ubuntu111 sang ashraful vai
     add_lab_veth
     ;;

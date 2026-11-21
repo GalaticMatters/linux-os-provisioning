@@ -7,12 +7,14 @@
 # Persistent desktops on desktop and macvlan: kali111 10.0.253.50, ubuntu111 10.0.253.51, ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54, sang 10.0.253.85, ashraful 10.0.253.86.
 # kali111, derek, sang, ashraful, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.
 # ubuntu111 is Kata Containers: runtime kata-runtime. Other services stay on runc.
+# ubuntu111 Kata veth-peer is Compose network veth111 (extra virtio NIC), ubuntu111-only.
+# Fleet Ubuntu stays runc until asked. kali01–30 / ubuntu01–30 still use host veth.
 # Kata guest DNS cannot use Docker 127.0.0.11. ubuntu111 extra_hosts maps kali111
 # (and the other persistent desktops) to macvlan. Cloudflare still uses Docker DNS
-# on the desktop bridge for http://ubuntu111:3000. veth-peer is not injected into Kata.
+# on the desktop bridge for http://ubuntu111:3000.
 # extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.
 # The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.
-# veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.
+# Fleet veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.
 # Cloudflare still opens
 # http://kali111:3000, http://derek:3000, http://sang:3000, http://ashraful:3000, and http://ubuntu111:3000.
 # vyas stays http://vyas:3000.
@@ -727,16 +729,22 @@ services:
       CUSTOM_USER: ${DESKTOP_USER:-van}
       PASSWORD: ${DESKTOP_PASSWORD:-}
       TITLE: Kali111
+      VETH_PEER_MAC: 02:42:ff:6f:02:02
+      VETH_PEER_SUBNET: 10.255.111.0/24
     volumes:
       - kali111-config:/config
       - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
+      - ./scripts/rename-veth-peer.sh:/custom-cont-init.d/97-veth-peer:ro
     extra_hosts: *lab-hosts
     networks:
       desktop:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.50
+      veth111:
+        ipv4_address: 10.255.111.2
+        mac_address: "02:42:ff:6f:02:02"
     logging: *json-logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
@@ -881,7 +889,8 @@ services:
 
   ubuntu111:
     hostname: ubuntu111
-    image: lscr.io/linuxserver/webtop:ubuntu-xfce
+    image: cybersecurity-ubuntu111:1
+    build: ./ubuntu111
     runtime: kata-runtime
     mem_limit: 4g
     shm_size: "1gb"
@@ -897,17 +906,25 @@ services:
       CUSTOM_USER: ${DESKTOP_USER:-van}
       PASSWORD: ${DESKTOP_PASSWORD:-}
       TITLE: Ubuntu111 desktop
+      VETH_PEER_MAC: 02:42:ff:6f:01:01
+      VETH_PEER_SUBNET: 10.255.111.0/24
     volumes:
       - ubuntu111-config:/config
+      - ./scripts/rename-veth-peer.sh:/custom-cont-init.d/97-veth-peer:ro
       - ./ubuntu/cont-init.d/98-kata-net:/custom-cont-init.d/98-kata-net:ro
+      - ./ubuntu/cont-init.d/99-packages:/custom-cont-init.d/99-packages:ro
       - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
       - ./ubuntu/custom-services.d/sshd:/custom-services.d/sshd:ro
+      - ./ubuntu/udev/70-veth-peer.rules:/etc/udev/rules.d/70-veth-peer.rules:ro
     extra_hosts: *ubuntu111-hosts
     networks:
       desktop:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.51
+      veth111:
+        ipv4_address: 10.255.111.1
+        mac_address: "02:42:ff:6f:01:01"
     logging: *json-logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/3000'"]
@@ -1118,6 +1135,17 @@ networks:
       config:
         - subnet: ${LAN_SUBNET:?Set LAN_SUBNET}
           gateway: ${LAN_GATEWAY:?Set LAN_GATEWAY}
+  veth111:
+    name: cybersecurity-veth111
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.111.0/24
+          gateway: 10.255.111.254
 
 volumes:
   caddy-data:

@@ -8,6 +8,7 @@
 set -eu
 
 LAN_PREFIX="10.0.253."
+VETH_PREFIX="10.255.111."
 PUBLIC_DNS_1="${UPSTREAM_DNS_1:-1.1.1.1}"
 PUBLIC_DNS_2="${UPSTREAM_DNS_2:-8.8.8.8}"
 
@@ -35,8 +36,10 @@ desktop_iface() {
   ip -4 -o addr show 2>/dev/null | while read -r _ name _ cidr _; do
     name=$(iface_name "$name")
     [ "$name" = "lo" ] && continue
+    [ "$name" = "veth-peer" ] && continue
     case "$cidr" in
       ${LAN_PREFIX}*) continue ;;
+      ${VETH_PREFIX}*) continue ;;
     esac
     printf '%s\n' "$name"
     return 0

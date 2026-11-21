@@ -244,8 +244,10 @@ fi
 echo "Kata Containers ${KATA_VER} is installed as Docker runtime ${DOCKER_RUNTIME}."
 echo "Default runtime is unchanged (${default_rt:-runc}). Fleet stays runc."
 docker info | grep -i runtime || true
-echo "Recreate only ubuntu111 (do not restart dnsmasq):"
+echo "Recreate only ubuntu111 (do not restart dnsmasq; fleet Ubuntu stays runc):"
+echo "  docker compose build ubuntu111"
 echo "  docker compose up -d --force-recreate --no-deps ubuntu111"
+echo "  sudo ./scripts/lab-veth.sh"
 echo "Internet is expected after that recreate (guest DNS 1.1.1.1, default route on the desktop bridge)."
-echo "veth-peer will not appear inside ubuntu111. kali111 uses the desktop bridge / macvlan."
+echo "Guest ip -br should list veth-peer (Kata extra virtio NIC on cybersecurity-veth111, peer kali111)."
 echo "Sysbox is unused after that recreate. Uninstall is optional; this script does not remove it."

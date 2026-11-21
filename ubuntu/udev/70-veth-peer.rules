@@ -1,0 +1,4 @@
+# ubuntu111 Kata extra NIC. Same MAC as compose network veth111 on ubuntu111.
+# Guest udev (if running) names the virtio interface veth-peer. cont-init
+# scripts/rename-veth-peer.sh also renames it, so this still works without udevd.
+SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="02:42:ff:6f:01:01", NAME="veth-peer"

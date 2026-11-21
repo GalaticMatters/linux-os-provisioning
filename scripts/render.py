@@ -15,8 +15,10 @@ vyas stay on the desktop bridge and macvlan at 10.0.253.52–54. derek,
 sang, and ashraful are persistent Kali extra-containers (derek
 10.0.253.53, sang 10.0.253.85, ashraful 10.0.253.86). vyas stays Linux Mint.
 scripts/lab-veth.sh adds an address-less veth-peer for each Kali/Ubuntu
-pair. That interface is not a Docker network and is not the path to
-10.0.253.11.
+fleet pair (runc host veth). ubuntu111 is Kata: Compose network
+cybersecurity-veth111 is a Kata extra virtio NIC renamed to veth-peer,
+paired with kali111. That is an ubuntu111-only test; fleet Ubuntu stays
+runc. veth-peer is not the path to 10.0.253.11.
 Hosts entries on every Kali desktop and those persistent desktops map
 ubuntuNN names to the Ubuntu macvlan addresses.
 Re-run after changing KALI_COUNT, UBUNTU_COUNT, UBUNTU_IP_START, SERVER_IP, or BASE_DOMAIN.
@@ -192,6 +194,17 @@ PERSISTENT_DESKTOPS: list[tuple[str, str]] = [
 # Browser names Caddy serves on SERVER_IP, besides the kali01–kali30 fleet.
 CADDY_LAN_DESKTOPS = ["kali111", "derek", "sang", "ashraful", "ubuntu100", "ubuntu111"]
 
+# ubuntu111 Kata extra NIC (test only). kali111 is the other end. Not the
+# fleet. Docker assigns these, then rename-veth-peer.sh strips them so the
+# guest name is veth-peer with no address, like the runc pairs.
+VETH111_NET = "cybersecurity-veth111"
+VETH111_SUBNET = "10.255.111.0/24"
+VETH111_GW = "10.255.111.254"
+VETH111_UBUNTU_IP = "10.255.111.1"
+VETH111_KALI_IP = "10.255.111.2"
+VETH111_UBUNTU_MAC = "02:42:ff:6f:01:01"
+VETH111_KALI_MAC = "02:42:ff:6f:02:02"
+
 
 def persistent_addr(name: str) -> str:
     for desktop, addr in PERSISTENT_DESKTOPS:
@@ -294,15 +307,21 @@ def check_fleet_kali(
         seen.add(addr)
 
 
-def dual_lan(addr: str, extra_hosts: str = "*lab-hosts") -> list[str]:
+def dual_lan(
+    addr: str,
+    extra_hosts: str = "*lab-hosts",
+    veth111_ip: str | None = None,
+    veth111_mac: str | None = None,
+) -> list[str]:
     """Bridge plus macvlan. The bridge keeps the default route.
 
     Cloudflare and Caddy resolve the container name on `desktop`.
     gw_priority on that network keeps internet and container-name traffic
     there. The macvlan connected route covers 10.0.253.0/24, so ping and
     SSH to the Ubuntu fleet leave on the LAN interface.
+    veth111 is the ubuntu111 Kata extra NIC (kali111 peer) only.
     """
-    return [
+    lines = [
         f"    extra_hosts: {extra_hosts}",
         "    networks:",
         "      desktop:",
@@ -310,6 +329,13 @@ def dual_lan(addr: str, extra_hosts: str = "*lab-hosts") -> list[str]:
         "      lan:",
         f"        ipv4_address: {addr}",
     ]
+    if veth111_ip:
+        lines += [
+            "      veth111:",
+            f"        ipv4_address: {veth111_ip}",
+            f'        mac_address: "{veth111_mac}"',
+        ]
+    return lines
 
 
 def lab_host_entries(
@@ -369,12 +395,15 @@ def render_persistent_kali(
     password_var: str = "DESKTOP_PASSWORD",
     default_user: str = "van",
     require_password: bool = False,
+    veth111: bool = False,
 ) -> list[str]:
     """Persistent Kali desktop on desktop + macvlan. No fleet.reset label.
 
     linuxserver Selkies only shows the browser login when PASSWORD is
     non-empty. CUSTOM_USER alone does nothing. An empty interpolates to
     PASSWORD= and the desktop opens with no prompt.
+    veth111 is kali111 only (peer of Kata ubuntu111). derek/sang/ashraful
+    stay off that network.
     """
     if require_password:
         password_line = (
@@ -382,6 +411,20 @@ def render_persistent_kali(
         )
     else:
         password_line = f"      PASSWORD: ${{{password_var}:-}}"
+    env_extra: list[str] = []
+    vol_extra: list[str] = []
+    veth_ip = None
+    veth_mac = None
+    if veth111:
+        env_extra = [
+            f"      VETH_PEER_MAC: {VETH111_KALI_MAC}",
+            f"      VETH_PEER_SUBNET: {VETH111_SUBNET}",
+        ]
+        vol_extra = [
+            "      - ./scripts/rename-veth-peer.sh:/custom-cont-init.d/97-veth-peer:ro",
+        ]
+        veth_ip = VETH111_KALI_IP
+        veth_mac = VETH111_KALI_MAC
     return [
         f"  {name}:",
         f"    hostname: {name}",
@@ -400,11 +443,13 @@ def render_persistent_kali(
         f"      CUSTOM_USER: ${{{user_var}:-{default_user}}}",
         password_line,
         f"      TITLE: {title}",
+        *env_extra,
         "    volumes:",
         f"      - {name}-config:/config",
         "      - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro",
         "      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro",
-        *dual_lan(persistent_addr(name)),
+        *vol_extra,
+        *dual_lan(persistent_addr(name), veth111_ip=veth_ip, veth111_mac=veth_mac),
         "    logging: *json-logs",
         "    healthcheck:",
         '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3000\'"]',
@@ -478,12 +523,14 @@ def render_compose(
         f"# Persistent desktops on desktop and macvlan: {desktop_note}.",
         "# kali111, derek, sang, ashraful, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.",
         "# ubuntu111 is Kata Containers: runtime kata-runtime. Other services stay on runc.",
+        "# ubuntu111 Kata veth-peer is Compose network veth111 (extra virtio NIC), ubuntu111-only.",
+        "# Fleet Ubuntu stays runc until asked. kali01–30 / ubuntu01–30 still use host veth.",
         "# Kata guest DNS cannot use Docker 127.0.0.11. ubuntu111 extra_hosts maps kali111",
         "# (and the other persistent desktops) to macvlan. Cloudflare still uses Docker DNS",
-        "# on the desktop bridge for http://ubuntu111:3000. veth-peer is not injected into Kata.",
+        "# on the desktop bridge for http://ubuntu111:3000.",
         "# extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.",
         "# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.",
-        "# veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.",
+        "# Fleet veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.",
         "# Cloudflare still opens",
         "# http://kali111:3000, http://derek:3000, http://sang:3000, http://ashraful:3000, and http://ubuntu111:3000.",
         "# vyas stays http://vyas:3000.",
@@ -572,7 +619,7 @@ def render_compose(
             "      lan:",
             f"        ipv4_address: {addr}",
         ]
-    lines += render_persistent_kali("kali111", "Kali111")
+    lines += render_persistent_kali("kali111", "Kali111", veth111=True)
     lines += render_persistent_kali(
         "derek",
         "Derek",
@@ -624,7 +671,8 @@ def render_compose(
         "",
         "  ubuntu111:",
         "    hostname: ubuntu111",
-        "    image: lscr.io/linuxserver/webtop:ubuntu-xfce",
+        "    image: cybersecurity-ubuntu111:1",
+        "    build: ./ubuntu111",
         "    runtime: kata-runtime",
         "    mem_limit: 4g",
         '    shm_size: "1gb"',
@@ -640,12 +688,22 @@ def render_compose(
         "      CUSTOM_USER: ${DESKTOP_USER:-van}",
         "      PASSWORD: ${DESKTOP_PASSWORD:-}",
         "      TITLE: Ubuntu111 desktop",
+        f"      VETH_PEER_MAC: {VETH111_UBUNTU_MAC}",
+        f"      VETH_PEER_SUBNET: {VETH111_SUBNET}",
         "    volumes:",
         "      - ubuntu111-config:/config",
+        "      - ./scripts/rename-veth-peer.sh:/custom-cont-init.d/97-veth-peer:ro",
         "      - ./ubuntu/cont-init.d/98-kata-net:/custom-cont-init.d/98-kata-net:ro",
+        "      - ./ubuntu/cont-init.d/99-packages:/custom-cont-init.d/99-packages:ro",
         "      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro",
         "      - ./ubuntu/custom-services.d/sshd:/custom-services.d/sshd:ro",
-        *dual_lan(persistent_addr("ubuntu111"), extra_hosts="*ubuntu111-hosts"),
+        "      - ./ubuntu/udev/70-veth-peer.rules:/etc/udev/rules.d/70-veth-peer.rules:ro",
+        *dual_lan(
+            persistent_addr("ubuntu111"),
+            extra_hosts="*ubuntu111-hosts",
+            veth111_ip=VETH111_UBUNTU_IP,
+            veth111_mac=VETH111_UBUNTU_MAC,
+        ),
         "    logging: *json-logs",
         "    healthcheck:",
         '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/3000\'"]',
@@ -794,6 +852,17 @@ def render_compose(
         "      config:",
         "        - subnet: ${LAN_SUBNET:?Set LAN_SUBNET}",
         "          gateway: ${LAN_GATEWAY:?Set LAN_GATEWAY}",
+        "  veth111:",
+        f"    name: {VETH111_NET}",
+        "    driver: bridge",
+        "    internal: true",
+        "    enable_ipv6: false",
+        "    driver_opts:",
+        '      com.docker.network.bridge.enable_ip_masquerade: "false"',
+        "    ipam:",
+        "      config:",
+        f"        - subnet: {VETH111_SUBNET}",
+        f"          gateway: {VETH111_GW}",
         "",
         "volumes:",
         "  caddy-data:",
