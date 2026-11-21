@@ -90,7 +90,7 @@ Copy the example, then edit `.env`. Placeholders in [`.env.example`](.env.exampl
 | `https://sang.research101.stream` | Cloudflare HTTP `http://sang:3000`, macvlan `10.0.253.85` | Same desktop. Add that hostname on the existing tunnel. |
 | `https://ashraful.cybersecurity.lan` | Browser `10.0.253.1`. Macvlan `10.0.253.86` | Persistent Kali, same image and pattern as sang. Sign in as `ashraful`. Password is `ASHRAFUL_PASSWORD` in `.env` only. Not part of `lab.sh on`/`off`, and not recreated at 02:00. Start it with `./scripts/lab.sh extra-containers-on`. |
 | `ssh ssh.research101.stream` | Cloudflare SSH `ssh://host.docker.internal:22` | The ProLiant sshd. Same machine as `10.0.253.1`, without signing in to kali111 first. |
-| `https://ubuntu111.research101.stream` | Cloudflare HTTP `http://ubuntu111:3000`, macvlan `10.0.253.51` | Persistent Ubuntu desktop on that same bridge, and on the macvlan. SSH is `ssh van@ubuntu111` on port 22, same password as the web login. |
+| `https://ubuntu111.research101.stream` | Cloudflare HTTP `http://ubuntu111:3000`, macvlan `10.0.253.51` | Persistent Ubuntu desktop on that same bridge, and on the macvlan. Docker sandbox (`sysbox-runc`). SSH is `ssh van@ubuntu111` on port 22, same password as the web login. |
 | ubuntu100 | macvlan `10.0.253.52`, still `ubuntu100` on the `desktop` bridge | Persistent Ubuntu desktop on the 500 GB disk. Same reachability. |
 
 Kali routing is name-based. `kali01.cybersecurity.lan` through `kali30.cybersecurity.lan` resolve to `10.0.253.1`. Browsers stay on Caddy. Caddy listens on that address (ports 80 and 443) and chooses the container from the Host / SNI name. The upstream is `https://kaliNN:3001` on the Compose bridge `cybersecurity-desktop`. Port 3001 is the Selkies HTTPS port. Port 3000 is the Kali container HTTP port and is not used. The container certificate is self-signed, so Caddy does not verify that hop. Browsers only see the Caddy internal CA. The desktop socket is streamed (`flush_interval -1`); do not put another proxy in front that buffers it.
@@ -122,6 +122,70 @@ ping -c 2 10.0.253.11
 ```
 
 All 30 Kali containers share one image, `lscr.io/linuxserver/kali-linux:latest`. There is one copy of that image on disk.
+
+## ubuntu111 Docker sandbox
+
+ubuntu111 is still the persistent linuxserver Ubuntu desktop: hostname `ubuntu111`, HTTP port 3000, `DESKTOP_USER` / `DESKTOP_PASSWORD` (default `van`), named volume `cybersecurity-ubuntu111-config`, sshd from `ubuntu/custom-services.d/sshd`, 4 GB `mem_limit`, desktop bridge plus macvlan `10.0.253.51`, extra-containers-on/off only. kali111 still reaches it as `ubuntu111` on `cybersecurity-desktop`. Cloudflare stays `http://ubuntu111:3000`. `lab.sh on` / `off` still leave it alone.
+
+The change is the runtime. ubuntu111 is a **Docker sandbox** in this lab: Compose sets `runtime: sysbox-runc`, so it is a Sysbox system container instead of a normal runc container. Every other service stays on runc.
+
+### What a Docker sandbox is here
+
+Docker’s product named Docker Sandboxes (`sbx` / package `docker-sbx`) is a KVM microVM for coding agents. It is **not** a Compose runtime and it does not join `cybersecurity-desktop`. A sandbox started with `sbx` cannot keep the service name `ubuntu111`, so kali111 and cloudflared would stop resolving `http://ubuntu111:3000`. It also wants Ubuntu 24.04 or later, KVM, and `sbx login`. This host is Docker CE on the ProLiant, not Docker Desktop.
+
+On Docker Engine, the closest working equivalent that keeps those Compose names is **Sysbox** (`sysbox-runc`). Docker Desktop Enhanced Container Isolation uses the same runtime. Sysbox still shares the ProLiant kernel. It is VM-like (Linux user namespace, systemd or Docker inside without `--privileged`), not a guest kernel.
+
+gVisor (`runsc`) would intercept syscalls and is a worse fit for a webtop. Kata Containers would give ubuntu111 its own kernel, but `scripts/lab-veth.sh` enters the container netns with `nsenter`, and a Kata guest would not see a host-injected `veth-peer`. Do not set Docker’s `default-runtime` to Sysbox; that would change kali111 and the fleet.
+
+### ProLiant host prerequisites
+
+Need Docker CE from Docker’s apt repo (`/usr/bin/docker`, not `/snap/bin/docker`). Sysbox does not work with the Ubuntu Docker snap. Need the `sysbox-ce` package (Sysbox 0.7.1). `jq` is only for the installer.
+
+Do **not** run `docker rm $(docker ps -a -q) -f`. That is in Sysbox’s generic install notes and would delete the lab. Do not restart dnsmasq. A new DNS name is not added.
+
+Install once, then recreate only ubuntu111:
+
+```sh
+git pull
+sudo ./scripts/install-ubuntu111-sandbox.sh
+docker compose up -d --no-deps ubuntu111
+```
+
+`up -d --no-deps` does not replace a container that is already running as runc. The first switch from a normal container needs a recreate:
+
+```sh
+docker compose up -d --force-recreate --no-deps ubuntu111
+```
+
+`--no-deps` leaves Caddy, kali111, and dnsmasq alone. After that recreate, put the kali111–ubuntu111 cable back if you still use it:
+
+```sh
+sudo ./scripts/lab-veth.sh
+```
+
+The install script is the same steps by hand:
+
+```sh
+# Docker CE, not snap
+which docker
+# /usr/bin/docker
+
+wget -O sysbox-ce_0.7.1.linux_amd64.deb \
+  https://github.com/nestybox/sysbox/releases/download/v0.7.1/sysbox-ce_0.7.1.linux_amd64.deb
+echo '9d6d5484f980d0a17f86c492c1262015c2afb66280bdb97215b79fde6a0261c5  sysbox-ce_0.7.1.linux_amd64.deb' | sha256sum -c
+sudo apt-get install -y jq
+sudo apt-get install -y ./sysbox-ce_0.7.1.linux_amd64.deb
+systemctl is-active sysbox
+docker info | grep -i runtime
+# Runtimes should list runc and sysbox-runc. Default Runtime stays runc.
+docker compose up -d --force-recreate --no-deps ubuntu111
+```
+
+If `/etc/docker/daemon.json` already has `bip` and `default-address-pools`, the Sysbox installer does not restart dockerd; it only SIGHUPs to register `sysbox-runc`. If dockerd does restart, `restart: unless-stopped` brings the other containers back. Do not set `"default-runtime": "sysbox-runc"`.
+
+`docker inspect ubuntu111 --format '{{.HostConfig.Runtime}}'` should print `sysbox-runc`.
+
+Kernel NFS **server** inside ubuntu111 still will not work. Sysbox cannot mount `rpc-pipefs`, and `nfsd` is a host kernel service, so you still hit missing nfsd, overlay file handles, or `Unable to apply new capability set`. A true Docker Sandbox microVM would have its own nfsd, but it cannot stay on this Compose bridge as `ubuntu111`. The fleet NFS lab on ubuntu01/kali01 is unchanged.
 
 ## NFS lab
 
@@ -599,7 +663,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 
 | Path | Role |
 | --- | --- |
-| `compose.yaml` | Generated. 30 Kali, 30 Ubuntu, persistent desktops, Caddy, dnsmasq, scheduler, cloudflared. `mem_limit: 4g` on every service. Desktops keep `shm_size: "1gb"`. |
+| `compose.yaml` | Generated. 30 Kali, 30 Ubuntu, persistent desktops, Caddy, dnsmasq, scheduler, cloudflared. `mem_limit: 4g` on every service. Desktops keep `shm_size: "1gb"`. ubuntu111 sets `runtime: sysbox-runc`. |
 | `scripts/render.py` | Rebuilds the fleet files from `.env`, including derek (Kali) and vyas (Mint) |
 | `mint/entrypoint.sh` | Creates the vyas account, grants sudo, requires that password on HTTP port 3000, then starts Cinnamon |
 | `.env.example` | Domain, timezone, NIC, subnet, counts, SSH placeholders |
@@ -609,6 +673,7 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `dns/` | Bundled dnsmasq, generated records, hosts-file example |
 | `scheduler/` | supercronic and the recreate script |
 | `scripts/lab.sh` | `on` starts only kali01–kali30 and ubuntu01–ubuntu30. `off` stops only those 60. `extra-containers-on` / `extra-containers-off` start and stop only derek, vyas, kali111, ubuntu111, sang, ashraful, and vai. `dns-on` / `dns-off` start and stop only dnsmasq. `rebuild` rebuilds the shared Ubuntu image and force-recreates ubuntu01–ubuntu30 and ubuntuserver |
+| `scripts/install-ubuntu111-sandbox.sh` | ProLiant one-time Sysbox CE install so ubuntu111 can use `runtime: sysbox-runc`. Does not `docker rm` the fleet and does not start ubuntu111 |
 | `scripts/nfs-lab.sh` | Student NFS lab on one pair. `addr` puts `192.168.101.1/24` on ubuntuNN `veth-peer` and `.2` on kaliNN. `server` exports `/sharedfolder` on Ubuntu to that peer. `client` mounts it on Kali at `/mnt/sharedfolder` |
 | `scripts/export-ca.sh` | Copy the Caddy root out of the volume |
 | `scripts/reset-now.sh` | Recreate both fleets now |
@@ -625,6 +690,8 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 
 ## Troubleshooting
 
+- **`Unknown runtime specified sysbox-runc` on ubuntu111.** Sysbox is not installed, or dockerd has not picked up `/etc/docker/daemon.json`. On the ProLiant, `./scripts/install-ubuntu111-sandbox.sh`, then `docker info | grep -i runtime` should list `sysbox-runc`. Recreate only ubuntu111: `docker compose up -d --force-recreate --no-deps ubuntu111`. Do not restart dnsmasq.
+- **Kernel NFS or CIFS inside ubuntu111 still fails.** Expected. The sandbox shares the ProLiant kernel. Sysbox cannot mount `rpc-pipefs`, so `nfsd` inside ubuntu111 will not start. Use the fleet NFS lab on ubuntu01/kali01.
 - **NFS mount hangs or `rpc.nfsd` cannot access `/proc/fs/nfsd`.** The ProLiant has not loaded kernel nfsd. `sudo modprobe nfsd`, then `./scripts/nfs-lab.sh server` again. Use `docker compose exec --privileged`, not a plain `docker exec`. Start NFS on one Ubuntu at a time.
 - **`veth-peer` is missing, or `ip addr add` cannot find that device.** The cable is added by `sudo ./scripts/lab-veth.sh`. `./scripts/lab.sh rebuild` and the 02:00 job run that script. If the pair is down, `./scripts/lab.sh on` first.
 - **Ubuntu container exits immediately.** Neither `SSH_PUBLIC_KEY` nor `SSH_PASSWORD` is set, or `SSH_USER` is `root` or not a lowercase account name. `docker compose logs ubuntu01`.
