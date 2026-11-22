@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 1180" width="1180" height="1180" role="img" aria-label="Lab network: internet, ASA, Catalyst VLANs, ProLiant Docker fleet">
+  <title>Cybersecurity LAN network</title>
+  <desc>Internet to Cisco ASA 5525-X, Catalyst 3560-X VLAN 10 and VLAN 11, then the ProLiant at 10.0.253.1 running Caddy, Cloudflare, desktop-bridge, macvlan, and kali/ubuntu veth-peer pairs.</desc>
+  <rect width="1180" height="1180" fill="#ffffff"/>
+
+  <style>
+    .title { font: 700 22px "Helvetica Neue", Helvetica, Arial, sans-serif; fill: #111111; }
+    .subtitle { font: 400 12px "Helvetica Neue", Helvetica, Arial, sans-serif; fill: #444444; }
+    .section { font: 700 13px "Helvetica Neue", Helvetica, Arial, sans-serif; fill: #111111; }
+    .box-title { font: 700 13px "Helvetica Neue", Helvetica, Arial, sans-serif; fill: #111111; }
+    .box-line { font: 400 11px "Helvetica Neue", Helvetica, Arial, sans-serif; fill: #333333; }
+    .label { font: 500 10px "Helvetica Neue", Helvetica, Arial, sans-serif; fill: #555555; }
+    .footer { font: 400 10px "Helvetica Neue", Helvetica, Arial, sans-serif; fill: #666666; }
+    .box { fill: #ffffff; stroke: #222222; stroke-width: 1.25; }
+    .box-key { fill: #f4f4f4; stroke: #111111; stroke-width: 1.75; }
+    .wire { stroke: #222222; stroke-width: 1.5; fill: none; }
+    .board { fill: #fafafa; stroke: #888888; stroke-width: 1; stroke-dasharray: 4 3; }
+  </style>
+
+  <text x="40" y="36" class="title">Cybersecurity LAN</text>
+  <text x="40" y="56" class="subtitle">Internet → ASA 5525-X → Catalyst 3560-X → ProLiant 10.0.253.1 (Docker: desktop-bridge, macvlan, veth-peer)</text>
+
+  <!-- Physical -->
+  <text x="40" y="82" class="section">Physical path</text>
+
+  <rect class="box" x="470" y="92" width="240" height="48" rx="6"/>
+  <text x="486" y="112" class="box-title">Internet</text>
+  <text x="486" y="128" class="box-line">ISP / campus uplink</text>
+  <line class="wire" x1="590" y1="140" x2="590" y2="162"/>
+  <text x="600" y="156" class="label">outside</text>
+
+  <rect class="box-key" x="350" y="162" width="480" height="88" rx="6"/>
+  <text x="366" y="184" class="box-title">Cisco ASA 5525-X</text>
+  <text x="366" y="204" class="box-line">Gi0/0  outside     DHCP client</text>
+  <text x="366" y="220" class="box-line">Gi0/1  VLAN 10     10.0.253.254/24   security 100</text>
+  <text x="366" y="236" class="box-line">Gi0/2  VLAN 11     10.0.254.254/24   security 100</text>
+
+  <path class="wire" d="M430 250 L250 292"/>
+  <text x="300" y="274" class="label">Gi0/1</text>
+  <path class="wire" d="M750 250 L930 292"/>
+  <text x="820" y="274" class="label">Gi0/2</text>
+
+  <rect class="board" x="40" y="284" width="1100" height="168" rx="8"/>
+  <text x="56" y="306" class="box-title">Cisco Catalyst 3560-X    hostname lab    management 10.0.253.251    second switch unplugged</text>
+
+  <rect class="box-key" x="56" y="318" width="520" height="118" rx="6"/>
+  <text x="72" y="340" class="box-title">VLAN 10    Gi0/1–Gi0/12    10.0.253.0/24</text>
+  <text x="72" y="360" class="box-line">Access VLAN 10. Gateway ASA Gi0/1  10.0.253.254</text>
+  <text x="72" y="376" class="box-line">DHCP 10.0.253.100–.200 (ASA)    DNS 10.0.253.1</text>
+  <text x="72" y="392" class="box-line">ProLiant lab NIC on Gi0/2. Leviton rows on Gi0/3–7. Spare Gi0/8–12.</text>
+  <text x="72" y="408" class="box-line">Lab PCs on VLAN 10. Containers stay on this subnet.</text>
+  <text x="72" y="424" class="box-line">Reserved .2–.10. Switch SVI .251. ASA .254.</text>
+
+  <rect class="box" x="592" y="318" width="532" height="118" rx="6"/>
+  <text x="608" y="340" class="box-title">VLAN 11    Gi0/13–Gi0/24    10.0.254.0/24</text>
+  <text x="608" y="360" class="box-line">Access VLAN 11. Gateway ASA Gi0/2  10.0.254.254</text>
+  <text x="608" y="376" class="box-line">DHCP 10.0.254.100–.200    public DNS (not lab dnsmasq)</text>
+  <text x="608" y="392" class="box-line">Isolated from VLAN 10 at L2. No containers here.</text>
+  <text x="608" y="408" class="box-line">Same ASA security level 100.</text>
+  <text x="608" y="424" class="box-line">ASA Gi0/2 plugs into any Gi0/13–24.</text>
+
+  <line class="wire" x1="200" y1="452" x2="200" y2="480"/>
+  <text x="210" y="470" class="label">PARENT_IFACE (br-ex or eno1)</text>
+
+  <!-- ProLiant host -->
+  <text x="40" y="500" class="section">ProLiant  ·  10.0.253.1</text>
+
+  <rect class="box-key" x="40" y="512" width="1100" height="72" rx="6"/>
+  <text x="56" y="534" class="box-title">HP ProLiant    Docker host    Kata runtime on Ubuntu    Kali stays runc</text>
+  <text x="56" y="554" class="box-line">Caddy :80/:443 on 10.0.253.1    dnsmasq :53    sshd :22    cloudflared → research101.stream</text>
+  <text x="56" y="570" class="box-line">cyber-shim 10.0.253.100/32  (host macvlan so this server can ping .11–.42 and .50–.86; not a VLAN 10 router)</text>
+
+  <!-- Logical Docker -->
+  <rect class="board" x="40" y="600" width="1100" height="520" rx="8"/>
+  <text x="56" y="624" class="box-title">Docker on the ProLiant</text>
+
+  <rect class="box-key" x="56" y="640" width="340" height="300" rx="6"/>
+  <text x="72" y="662" class="box-title">cybersecurity-desktop</text>
+  <text x="72" y="682" class="box-line">Compose bridge. Default route for desktops.</text>
+  <text x="72" y="698" class="box-line">Caddy → kaliNN:3001 (Selkies HTTPS)</text>
+  <text x="72" y="714" class="box-line">Cloudflare HTTP :3000 on persistents</text>
+  <text x="72" y="738" class="box-line">kali01–30   runc   02:00 reset</text>
+  <text x="72" y="754" class="box-line">kali111     runc   no reset</text>
+  <text x="72" y="770" class="box-line">ubuntu111   kata   no reset</text>
+  <text x="72" y="786" class="box-line">ubuntu100   webtop, 500 GB disk</text>
+  <text x="72" y="802" class="box-line">derek .53   sang .85   ashraful .86</text>
+  <text x="72" y="818" class="box-line">vyas .54    Linux Mint</text>
+  <text x="72" y="842" class="box-line">Reach ubuntu111 from kali111 as</text>
+  <text x="72" y="858" class="box-line">hostname ubuntu111 (bridge), not .51</text>
+  <text x="72" y="874" class="box-line">ssh.research101.stream → host:22</text>
+  <text x="72" y="890" class="box-line">ubuntu111.research101.stream → :3000</text>
+  <text x="72" y="906" class="box-line">kali111 / derek / sang / vyas same</text>
+
+  <rect class="box-key" x="412" y="640" width="340" height="300" rx="6"/>
+  <text x="428" y="662" class="box-title">cybersecurity-macvlan</text>
+  <text x="428" y="682" class="box-line">VLAN 10 child of PARENT_IFACE</text>
+  <text x="428" y="698" class="box-line">Ping and SSH to Ubuntu live here.</text>
+  <text x="428" y="722" class="box-line">ubuntu01–30  .11–.40  kata  02:00</text>
+  <text x="428" y="738" class="box-line">ubuntuserver  .41     kata  no reset</text>
+  <text x="428" y="754" class="box-line">vai           .42     kata  no reset</text>
+  <text x="428" y="770" class="box-line">kali01–30     .55–.84  runc  02:00</text>
+  <text x="428" y="786" class="box-line">kali111 .50   ubuntu111 .51</text>
+  <text x="428" y="802" class="box-line">ubuntu100 .52 derek .53 vyas .54</text>
+  <text x="428" y="818" class="box-line">sang .85      ashraful .86</text>
+  <text x="428" y="842" class="box-line">sshd 0.0.0.0:22 on Ubuntu Kata guests</text>
+  <text x="428" y="858" class="box-line">Guest DNS 1.1.1.1 (not 127.0.0.11)</text>
+  <text x="428" y="874" class="box-line">From kali01: ping 10.0.253.11</text>
+  <text x="428" y="890" class="box-line">ssh student@ubuntu01</text>
+  <text x="428" y="906" class="box-line">Host 10.0.253.1 cannot reach these;</text>
+  <text x="428" y="922" class="box-line">use docker exec or cyber-shim .100</text>
+
+  <rect class="box" x="768" y="640" width="356" height="300" rx="6"/>
+  <text x="784" y="662" class="box-title">veth-peer    cybersecurity-vethNN</text>
+  <text x="784" y="682" class="box-line">One internal bridge per pair. No masquerade.</text>
+  <text x="784" y="698" class="box-line">Unnumbered. Not the path to .11.</text>
+  <text x="784" y="722" class="box-line">kali01 ↔ ubuntu01   veth01  10.255.1.0/24*</text>
+  <text x="784" y="738" class="box-line">… through kali30 ↔ ubuntu30</text>
+  <text x="784" y="754" class="box-line">kali111 ↔ ubuntu111  veth111</text>
+  <text x="784" y="778" class="box-line">Ubuntu: Kata virtio extra NIC</text>
+  <text x="784" y="794" class="box-line">Kali: runc extra Docker NIC</text>
+  <text x="784" y="810" class="box-line">Kata cannot take a host veth</text>
+  <text x="784" y="826" class="box-line">(shim netns ≠ QEMU guest)</text>
+  <text x="784" y="850" class="box-line">lab-veth.sh renames + flushes</text>
+  <text x="784" y="866" class="box-line">02:00 recreate then lab-veth.sh</text>
+  <text x="784" y="890" class="box-line">No veth-peer on ubuntuserver, vai,</text>
+  <text x="784" y="906" class="box-line">ubuntu100, derek, sang, ashraful, vyas</text>
+  <text x="784" y="926" class="box-line">*placeholder IPs are flushed</text>
+
+  <rect class="box" x="56" y="956" width="1084" height="148" rx="6"/>
+  <text x="72" y="978" class="box-title">Caddy / Cloudflare / 02:00</text>
+  <text x="72" y="998" class="box-line">Browsers: kali01.cybersecurity.lan → 10.0.253.1 (Caddy) → https://kali01:3001 on desktop-bridge. Ubuntu names → macvlan.</text>
+  <text x="72" y="1014" class="box-line">Cloudflare (profile public): ubuntu111 / kali111 / derek / sang / vyas .research101.stream → http://name:3000 on desktop-bridge.</text>
+  <text x="72" y="1030" class="box-line">ssh.research101.stream → ssh://host.docker.internal:22 (ProLiant sshd). Do not set Docker default-runtime to kata-runtime.</text>
+  <text x="72" y="1054" class="box-line">02:00 (TZ from .env): recreate fleet.reset = kali01–30 + ubuntu01–30 only, restart Caddy, then lab-veth.sh. ubuntuserver, vai, ubuntu111, persistents, DNS: not reset.</text>
+  <text x="72" y="1070" class="box-line">Passwords stay in .env. /dev/kvm required for Kata. Install: sudo ./scripts/install-ubuntu111-kata.sh then ./scripts/lab.sh rebuild and sudo ./scripts/lab-veth.sh.</text>
+  <text x="72" y="1086" class="box-line">Verify: docker inspect ubuntu01 Runtime is kata-runtime.  docker exec kali01 ping -c 2 10.0.253.11</text>
+
+  <text x="40" y="1144" class="footer">Source: this repo (compose.yaml, README). No invented hardware. Second Catalyst is unplugged. VLAN 11 has no containers. cyber-shim is not a router for VLAN 10.</text>
+  <text x="40" y="1162" class="footer">Vector original: docs/lab-network-diagram.svg    PNG: docs/lab-network-diagram.png</text>
+</svg>

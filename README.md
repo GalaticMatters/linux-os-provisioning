@@ -31,6 +31,29 @@ Plug only the ProLiant NIC that holds `10.0.253.1`. If that address lives on `br
 
 Containers stay on `10.0.253.0/24` (VLAN 10). The ASA is the upstream gateway at `10.0.253.254`. Compose `LAN_GATEWAY` is this server (`10.0.253.1`).
 
+## Network diagram
+
+Physical path and Docker networks on the ProLiant. Vector: [`docs/lab-network-diagram.svg`](docs/lab-network-diagram.svg). PNG: [`docs/lab-network-diagram.png`](docs/lab-network-diagram.png).
+
+![Cybersecurity LAN: internet, ASA, Catalyst, ProLiant Docker fleet](docs/lab-network-diagram.svg)
+
+```mermaid
+flowchart TB
+  Internet --> ASA["ASA 5525-X"]
+  ASA -->|"Gi0/1 VLAN 10 .254"| SW10["Catalyst VLAN 10<br/>Gi0/1–12  10.0.253.0/24"]
+  ASA -->|"Gi0/2 VLAN 11 .254"| SW11["Catalyst VLAN 11<br/>Gi0/13–24  10.0.254.0/24"]
+  SW10 -->|"PARENT_IFACE"| PL["ProLiant 10.0.253.1<br/>Caddy / dnsmasq / cloudflared"]
+  PL --> Shim["cyber-shim .100"]
+  PL --> Desk["cybersecurity-desktop"]
+  PL --> Mac["cybersecurity-macvlan"]
+  PL --> Veth["cybersecurity-vethNN"]
+  Desk --> Kfleet["kali01–30 runc :3001"]
+  Desk --> Persist["kali111 ubuntu111 derek sang ashraful vyas ubuntu100"]
+  Mac --> Ufleet["ubuntu01–30 kata .11–.40"]
+  Mac --> Upersist["ubuntuserver .41  vai .42"]
+  Veth --> Pair["kaliNN ↔ ubuntuNN veth-peer<br/>unnumbered virtio; Kata cannot take a host veth"]
+```
+
 ## IP plan
 
 Two Docker networks matter for reachability:
@@ -381,6 +404,7 @@ Re-run [`scripts/render.py`](scripts/render.py) after `KALI_COUNT`, `UBUNTU_COUN
 | `scheduler/` | 02:00 supercronic job |
 | `dns/` | Bundled dnsmasq records |
 | `.env.example` | Copy to `.env`. No secrets |
+| `docs/lab-network-diagram.svg` | Network diagram (PNG sibling for preview) |
 
 ## If something is wrong
 
