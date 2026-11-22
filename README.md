@@ -268,7 +268,7 @@ kali01’s `veth-peer` is the other end of ubuntu01’s `veth-peer`, through kal
 
 Kata cannot take a host veth: the Docker pid is the shim netns, not the QEMU guest. Each pair uses Compose network `cybersecurity-vethNN` (internal bridge, no masquerade). Kata hotplugs a virtio NIC. `scripts/rename-veth-peer.sh` names it `veth-peer` and flushes the placeholder `10.255.N.0/24` address. Kali is runc on that same L2; its extra Docker NIC is renamed the same way. `lab-veth.sh` does not `ip link set … netns` into a Kata Ubuntu box. After 02:00 or `rebuild`, run (or the job already ran) `sudo ./scripts/lab-veth.sh`.
 
-NetworkManager on Kali must ignore `veth-peer`. If it DHCP’s that cable it can drop the desktop-bridge address and the Kali name stops loading. `ip` / `dhclient` / `dhcpd` still configure the lab cable.
+NetworkManager on Kali must ignore `veth-peer` (unmanaged, `ipv4.ignore-auto-dns`, no default via that NIC). Kali keeps Docker DNS `127.0.0.11`; a down ubuntu111 must not change that. `192.168.200.1` is not a lab nameserver. `ip` / `dhclient` / `dhcpd` still configure the lab cable.
 
 ## Persistent desktops, Caddy, Cloudflare
 
@@ -416,6 +416,7 @@ Re-run [`scripts/render.py`](scripts/render.py) after `KALI_COUNT`, `UBUNTU_COUN
 - **kali111 cannot ping/SSH ubuntu111.** Use hostname `ubuntu111` on the desktop bridge, not `10.0.253.51`. `sshd` must listen on `0.0.0.0:22`.
 - **ProLiant cannot ping `10.0.253.11`.** Expected without `cyber-shim`. Use `docker exec` or `sudo ./scripts/lab-veth.sh`.
 - **Ubuntu exits immediately.** Set `SSH_PUBLIC_KEY` or `SSH_PASSWORD`. `docker compose logs ubuntu01`.
+- **kali111 `nameserver 192.168.200.1` / names fail.** NM leftover on the pair NIC; that address is not in the lab. `sudo ./scripts/lab-veth.sh`, then `docker exec kali111 cat /etc/resolv.conf` should show `127.0.0.11`. Do not recreate Kali. Do not restart dnsmasq.
 - **Names do not resolve.** `./scripts/lab.sh dns-on`.
 - **`known_hosts` mismatch.** 02:00 replaced host keys.
 - **Certificate warning.** Export the CA again.

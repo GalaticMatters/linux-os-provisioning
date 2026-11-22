@@ -147,6 +147,61 @@ write_udev() {
     >/etc/udev/rules.d/70-veth-peer.rules 2>/dev/null || true
 }
 
+is_kali_guest() {
+  h=$(hostname 2>/dev/null || true)
+  case "$h" in
+    kali*) return 0 ;;
+  esac
+  return 1
+}
+
+# veth-peer is unnumbered. NM must not DHCP it, must not take its default
+# route, and must not copy a nameserver off it (kali111 had stale
+# 192.168.200.1, which is not a lab address; pair net is 10.255.111.0/24).
+nm_peer_no_dns() {
+  iface=$1
+  mkdir -p /etc/NetworkManager/conf.d
+  printf '%s\n' "[keyfile]" "unmanaged-devices=interface-name:${VETH_NAME}" \
+    >/etc/NetworkManager/conf.d/veth-peer-unmanaged.conf 2>/dev/null || true
+  if ! command -v nmcli >/dev/null 2>&1; then
+    return 0
+  fi
+  nmcli device set "$iface" managed no >/dev/null 2>&1 || true
+  nmcli device set "$VETH_NAME" managed no >/dev/null 2>&1 || true
+  uuids=$(nmcli -t -f UUID,DEVICE connection show 2>/dev/null |
+    awk -F: -v d="$iface" -v v="$VETH_NAME" '$2 == d || $2 == v { print $1 }') || true
+  for uuid in $uuids; do
+    [ -n "$uuid" ] || continue
+    nmcli connection modify "$uuid" \
+      ipv4.ignore-auto-dns yes \
+      ipv4.never-default yes \
+      ipv4.dns "" \
+      ipv6.ignore-auto-dns yes \
+      ipv6.never-default yes \
+      ipv6.dns "" >/dev/null 2>&1 || true
+  done
+}
+
+# Kali is runc: Docker DNS is 127.0.0.11. Do not run this in an Ubuntu
+# Kata guest (127.0.0.11 is the shim, not the VM).
+restore_kali_docker_dns() {
+  is_kali_guest || return 0
+  mkdir -p /etc/NetworkManager/conf.d
+  printf '%s\n' "[main]" "dns=none" "rc-manager=unmanaged" \
+    >/etc/NetworkManager/conf.d/90-docker-dns.conf 2>/dev/null || true
+  if command -v nmcli >/dev/null 2>&1; then
+    nmcli general reload >/dev/null 2>&1 || true
+  fi
+  if command -v resolvectl >/dev/null 2>&1; then
+    resolvectl revert "$VETH_NAME" >/dev/null 2>&1 || true
+  fi
+  if grep -qE 'nameserver[[:space:]]+127\.0\.0\.11' /etc/resolv.conf 2>/dev/null; then
+    return 0
+  fi
+  printf '%s\n' "nameserver 127.0.0.11" "options ndots:0" > /etc/resolv.conf 2>/dev/null || true
+  echo "veth-peer: Kali DNS restored to Docker 127.0.0.11"
+}
+
 bare_peer() {
   iface=$1
   ip link set "$iface" down >/dev/null 2>&1 || true
@@ -164,27 +219,25 @@ bare_peer() {
   ip addr flush dev "$iface" 2>/dev/null || true
   ip -4 route del default dev "$iface" 2>/dev/null || true
   ip link set "$iface" up || true
-  if command -v nmcli >/dev/null 2>&1; then
-    nmcli device set "$iface" managed no >/dev/null 2>&1 || true
-  fi
-  mkdir -p /etc/NetworkManager/conf.d
-  printf '%s\n' "[keyfile]" "unmanaged-devices=interface-name:${VETH_NAME}" \
-    >/etc/NetworkManager/conf.d/veth-peer-unmanaged.conf 2>/dev/null || true
+  nm_peer_no_dns "$iface"
   echo "veth-peer: ${iface} is up with no address (Kata extra virtio NIC / pair peer)"
   ip -br link show "$VETH_NAME" 2>/dev/null || ip link show "$VETH_NAME" || true
 }
 
 if ! command -v ip >/dev/null 2>&1; then
   echo "veth-peer: ip is missing; skip" >&2
+  restore_kali_docker_dns
   exit 0
 fi
 
 iface=$(wait_for_peer || true)
 if [ -z "$iface" ]; then
   echo "veth-peer: extra NIC not in this namespace yet (Compose network vethNN / hotplug)" >&2
+  restore_kali_docker_dns
   exit 0
 fi
 
 mac=$(mac_of "$iface")
 write_udev "${VETH_MAC:-$mac}"
 bare_peer "$iface" || true
+restore_kali_docker_dns

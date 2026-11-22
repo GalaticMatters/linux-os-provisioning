@@ -186,11 +186,27 @@ keep_kali_net() {
   svc=$1
   pid=$2
   quiet=${3:-}
-  nsenter -t "$pid" -m /bin/sh -c 'mkdir -p /etc/NetworkManager/conf.d
+  # -m -n: resolv.conf and NM live in the container mount; nmcli sees veth-peer
+  # in the container netns. -m alone used to run nmcli against the host.
+  nsenter -t "$pid" -m -n /bin/sh -s <<'EOS' || true
+mkdir -p /etc/NetworkManager/conf.d
 printf "%s\n" "[keyfile]" "unmanaged-devices=interface-name:veth-peer" > /etc/NetworkManager/conf.d/veth-peer-unmanaged.conf
+printf "%s\n" "[main]" "dns=none" "rc-manager=unmanaged" > /etc/NetworkManager/conf.d/90-docker-dns.conf
 if command -v nmcli >/dev/null 2>&1; then
   nmcli device set veth-peer managed no >/dev/null 2>&1 || true
-fi' || true
+  for uuid in $(nmcli -t -f UUID,DEVICE connection show 2>/dev/null | awk -F: '$2 == "veth-peer" { print $1 }'); do
+    [ -n "$uuid" ] || continue
+    nmcli connection modify "$uuid" ipv4.ignore-auto-dns yes ipv4.never-default yes ipv4.dns "" ipv6.ignore-auto-dns yes ipv6.never-default yes ipv6.dns "" >/dev/null 2>&1 || true
+  done
+  nmcli general reload >/dev/null 2>&1 || true
+fi
+if command -v resolvectl >/dev/null 2>&1; then
+  resolvectl revert veth-peer >/dev/null 2>&1 || true
+fi
+if ! grep -qE "nameserver[[:space:]]+127\.0\.0\.11" /etc/resolv.conf 2>/dev/null; then
+  printf "%s\n" "nameserver 127.0.0.11" "options ndots:0" > /etc/resolv.conf 2>/dev/null || true
+fi
+EOS
   cid=$(docker compose ps -q "$svc" 2>/dev/null || true)
   if [ -z "$cid" ]; then
     return 0
@@ -401,6 +417,14 @@ pair_kata_veth() {
   fi
 }
 
+restore_kali_peer_dns() {
+  kali=$1
+  n=$(pair_num "$kali") || return 0
+  kmac=$(veth_kali_mac "$n") || kmac=""
+  subnet=$(veth_subnet "$n")
+  rename_guest_veth "$kali" "$kmac" "$subnet" || true
+}
+
 pair_veth() {
   kali=$1
   ubuntu=$2
@@ -410,6 +434,11 @@ pair_veth() {
   upid=$(container_pid "$ubuntu" || true)
   if [ -z "$kpid" ]; then
     echo "skip $kali (not running)"
+  else
+    # Docker DNS 127.0.0.11 even if the Ubuntu peer is down (kali111 had
+    # nameserver 192.168.200.1 with no route after ubuntu111 closed).
+    keep_kali_net "$kali" "$kpid" quiet
+    restore_kali_peer_dns "$kali"
   fi
   if [ -z "$upid" ]; then
     echo "skip $ubuntu (not running)"
