@@ -58,8 +58,11 @@ find_by_subnet() {
 }
 
 wait_for_peer() {
+  # Cont-init runs before sshd. A long wait here delays port 22. lab-veth.sh
+  # sets VETH_PEER_WAIT=30 after the guest is up.
+  max=${VETH_PEER_WAIT:-8}
   n=0
-  while [ "$n" -lt 30 ]; do
+  while [ "$n" -lt "$max" ]; do
     if ip link show "$VETH_NAME" >/dev/null 2>&1; then
       printf '%s\n' "$VETH_NAME"
       return 0

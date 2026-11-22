@@ -129,7 +129,7 @@ All 30 Kali containers share one image, `lscr.io/linuxserver/kali-linux:latest`.
 
 ## ubuntu111 Kata Containers
 
-ubuntu111 is still the persistent linuxserver Ubuntu desktop: hostname `ubuntu111`, HTTP port 3000, `DESKTOP_USER` / `DESKTOP_PASSWORD` (default `van`), named volume `cybersecurity-ubuntu111-config`, sshd from `ubuntu/custom-services.d/sshd`, 4 GB `mem_limit`, desktop bridge plus macvlan `10.0.253.51`, extra-containers-on/off only. kali111 still reaches it as `ubuntu111` on `cybersecurity-desktop`. Cloudflare stays `http://ubuntu111:3000`. `lab.sh on` / `off` still leave it alone. Image `cybersecurity-ubuntu111:1` is webtop plus `iputils-ping` (`ubuntu111/Dockerfile`); `ubuntu/cont-init.d/99-packages` installs `ping` at start if the layer is missing.
+ubuntu111 is still the persistent linuxserver Ubuntu desktop: hostname `ubuntu111`, HTTP port 3000, `DESKTOP_USER` / `DESKTOP_PASSWORD` (default `van`), named volume `cybersecurity-ubuntu111-config`, sshd from `ubuntu/custom-services.d/sshd`, 4 GB `mem_limit`, desktop bridge plus macvlan `10.0.253.51`, extra-containers-on/off only. kali111 still reaches it as `ubuntu111` on `cybersecurity-desktop`. Cloudflare stays `http://ubuntu111:3000`. `lab.sh on` / `off` still leave it alone. Image `cybersecurity-ubuntu111:1` is webtop plus `iputils-ping` and `openssh-server` (`ubuntu111/Dockerfile`). `ubuntu/cont-init.d/99-packages` installs `ping` at start if the layer is missing. sshd is `/custom-services.d/sshd` (directory bind-mount; a file mount is skipped on Kata virtiofs).
 
 The change is the runtime. Compose sets `runtime: kata-runtime` on ubuntu111 only. That is Kata Containers (QEMU, runtime-rs shim), a lightweight VM with its **own guest kernel**. This is an **ubuntu111-only test**. Every other service stays on runc, including kali111 and **ubuntu01–ubuntu30**. Do not set Docker’s `default-runtime` to `kata-runtime`. Do not convert the Ubuntu fleet until you ask.
 
@@ -138,6 +138,20 @@ Sysbox (`sysbox-runc`) is no longer used. It still shared the ProLiant kernel, s
 ### Networking (internet, kali111, DNS)
 
 ubuntu111 stays on the desktop bridge (`cybersecurity-desktop`, default route, Cloudflare `http://ubuntu111:3000`) and `lan` (macvlan `10.0.253.51`), plus test-only `veth111` (`cybersecurity-veth111`). After a recreate, **internet is expected**: `ping 1.1.1.1`, then `apt-get update` once the apt lock is free. kali111 stays reachable on that desktop bridge (Cloudflare and kali111 still resolve `ubuntu111` with Docker DNS). From inside ubuntu111, `kali111` is extra_hosts to `10.0.253.50`. Guest `ip -br` should also show `veth-peer` (the extra virtio NIC, no address), paired with kali111.
+
+### How to reach ubuntu111 (from kali111)
+
+Do this on the boxes. kali111 and ubuntu111 talk on the **desktop bridge** (`cybersecurity-desktop`). Docker DNS resolves hostname `ubuntu111` to that bridge IP (often `eth0` in the guest). That is the ping and SSH path.
+
+`veth-peer` stays unnumbered until you add addresses yourself (same as the fleet NFS lab). It is not how you reach SSH. `10.0.253.51` is the macvlan (VLAN 10) address; do not use it for this test.
+
+```sh
+# on kali111
+ping -c 2 ubuntu111
+ssh van@ubuntu111
+```
+
+SSH password is `DESKTOP_PASSWORD` in `.env`, the same as the web login. sshd listens on `0.0.0.0:22`. Guest names: desktop bridge is usually `eth0`, macvlan `eth1` at `10.0.253.51`, extra NIC `veth-peer` (no IP). Confirm with `ip -br` inside ubuntu111.
 
 A Kata guest does not see Docker’s embedded DNS at `127.0.0.11`. That address exists in the shim netns, not in the VM, so `apt` and `curl` look like “no internet” even when L3 is up. Compose `dns:` does not fix this on a user-defined bridge (Docker still writes `127.0.0.11`). `ubuntu/cont-init.d/98-kata-net` replaces that resolver with `1.1.1.1` / `8.8.8.8` and moves the default route onto the desktop veth (Docker NAT) so the macvlan gateway `10.0.253.1` is not used for internet. Kata itself does not run DHCP on those virtio NICs; do not `dhclient` them or the guest will drop the Docker addresses.
 
@@ -184,10 +198,14 @@ sudo ./scripts/install-ubuntu111-kata.sh
 docker compose build ubuntu111
 docker compose up -d --force-recreate --no-deps ubuntu111
 sudo ./scripts/lab-veth.sh
+docker inspect ubuntu111 --format '{{.HostConfig.Runtime}}'
 docker exec ubuntu111 ip -br
+docker exec ubuntu111 ss -lntp | grep 22
 docker exec ubuntu111 command -v ping
-docker exec kali111 ip -br
+docker exec kali111 ping -c 2 ubuntu111
 ```
+
+kali111 does not need a recreate for SSH. From a kali111 terminal: `ping -c 2 ubuntu111` then `ssh van@ubuntu111`.
 
 `--no-deps` leaves Caddy and dnsmasq alone. `lab-veth.sh` may `docker network connect` kali111 onto `cybersecurity-veth111` without recreating that desktop. Do not `docker compose restart` dnsmasq. Do not run `lab.sh on` / `off` for this. Do not set `"default-runtime": "kata-runtime"`. Do not convert ubuntu01–30.
 
@@ -244,9 +262,11 @@ docker inspect ubuntu111 --format '{{.HostConfig.Runtime}}'
 docker compose exec ubuntu111 cat /etc/resolv.conf
 # nameserver 1.1.1.1  — not 127.0.0.11
 docker compose exec ubuntu111 ip -br
-# veth-peer should be UP, no address. Peer is kali111 on cybersecurity-veth111.
+# eth0 (or similar) has the desktop-bridge IP. veth-peer is UP with no address.
+docker compose exec ubuntu111 ss -lntp | grep 22
+# sshd 0.0.0.0:22
 docker compose exec ubuntu111 ping -c 2 1.1.1.1
-docker compose exec ubuntu111 ping -c 2 10.0.253.50
+docker compose exec kali111 ping -c 2 ubuntu111
 ```
 
 ### Uninstall Sysbox?
@@ -752,7 +772,8 @@ Logs: `docker compose logs scheduler`. A reboot of the Docker host also clears t
 | `scripts/install-ubuntu111-kata.sh` | ProLiant Kata Containers 4.4.0 install plus host networking (`tcfilter`, ConfigPath under `/etc/kata-containers`). Re-run to patch networking without downloading again. Does not `docker rm` the fleet, does not change the default Docker runtime, and does not start ubuntu111 |
 | `ubuntu/cont-init.d/98-kata-net` | ubuntu111 only. Replaces Docker `127.0.0.11` DNS and prefers the desktop-bridge default route. Skips `veth-peer`. Does not delete apt locks |
 | `ubuntu/cont-init.d/99-packages` | ubuntu111 startup package list (`iputils-ping`). Survives recreate. Do not rm apt locks |
-| `ubuntu111/Dockerfile` | Webtop plus `iputils-ping`. Tagged `cybersecurity-ubuntu111:1`. ubuntu111 only |
+| `ubuntu111/Dockerfile` | Webtop plus `iputils-ping` and `openssh-server`. Tagged `cybersecurity-ubuntu111:1`. ubuntu111 only. Build context is the repo root. |
+| `ubuntu/custom-services.d/sshd` | ubuntu111 sshd. Directory-mounted at `/custom-services.d`. Listens on `0.0.0.0:22`. |
 | `scripts/rename-veth-peer.sh` | Names the Kata extra NIC `veth-peer` in the guest (and on kali111). Fleet pairs do not mount it |
 | `scripts/install-ubuntu111-sandbox.sh` | Wrapper. Runs `install-ubuntu111-kata.sh`. Sysbox is gone. |
 | `scripts/nfs-lab.sh` | Student NFS lab on one pair. `addr` puts `192.168.101.1/24` on ubuntuNN `veth-peer` and `.2` on kaliNN. `server` exports `/sharedfolder` on Ubuntu to that peer. `client` mounts it on Kali at `/mnt/sharedfolder` |
@@ -783,6 +804,7 @@ Other pinned pieces: Caddy `2.11.7-alpine`, scheduler base `docker:28.5.2-cli`, 
 - **NFS mount hangs or `rpc.nfsd` cannot access `/proc/fs/nfsd`.** The ProLiant has not loaded kernel nfsd. `sudo modprobe nfsd`, then `./scripts/nfs-lab.sh server` again. Use `docker compose exec --privileged`, not a plain `docker exec`. Start NFS on one Ubuntu at a time.
 - **`veth-peer` is missing, or `ip addr add` cannot find that device.** On kali01–30 / ubuntu01–30 the cable is added by `sudo ./scripts/lab-veth.sh`. `./scripts/lab.sh rebuild` and the 02:00 job run that script. If the pair is down, `./scripts/lab.sh on` first. On **ubuntu111**, do not `nsenter` a host veth into the shim. Recreate ubuntu111 so it joins `cybersecurity-veth111`, then `sudo ./scripts/lab-veth.sh`. `docker exec ubuntu111 ip -br` should list `veth-peer`. Peer is kali111. Fleet Ubuntu stays runc.
 - **`ping: command not found` inside ubuntu111.** Image layer or startup list. `git pull`, `docker compose build ubuntu111`, recreate ubuntu111. `99-packages` also apt-installs `iputils-ping` after DNS works and the apt lock is free. Do not rm the apt lock.
+- **kali111 cannot ping `ubuntu111`, or SSH is connection refused.** Ping and SSH use hostname `ubuntu111` on the desktop bridge, not `10.0.253.51` and not `veth-peer`. Connection refused is sshd not listening. Rebuild and recreate only ubuntu111 (`docker compose build ubuntu111 && docker compose up -d --force-recreate --no-deps ubuntu111`). `docker exec ubuntu111 ss -lntp | grep 22` should show `0.0.0.0:22`. Then from kali111: `ping -c 2 ubuntu111` and `ssh van@ubuntu111`. Do not restart dnsmasq. Do not `lab.sh on`/`off`.
 - **Ubuntu container exits immediately.** Neither `SSH_PUBLIC_KEY` nor `SSH_PASSWORD` is set, or `SSH_USER` is `root` or not a lowercase account name. `docker compose logs ubuntu01`.
 - **The ProLiant cannot ping `10.0.253.11` (`ubuntu01`). A lab PC can.** SSH from the ProLiant to that address times out the same way. Macvlan on the same NIC. Use `docker exec`, the shim above, or a terminal on kali111, sang, ubuntu111, ubuntu100, derek, or vyas.
 - **kali111 cannot ping `10.0.253.11` or `ubuntu01.cybersecurity.lan`.** That desktop was not recreated after the macvlan addresses landed. From the repo, `docker compose up -d --force-recreate --no-deps kali111 sang ubuntu111 ubuntu100`. Leave derek out of that command until `cybersecurity-derek-config` has been removed for the Kali switch. vyas does not need a recreate for this.

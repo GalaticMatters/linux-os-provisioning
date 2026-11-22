@@ -252,6 +252,7 @@ rename_guest_veth() {
   docker exec -i \
     -e "VETH_PEER_MAC=$mac" \
     -e "VETH_PEER_SUBNET=$VETH111_SUBNET" \
+    -e "VETH_PEER_WAIT=30" \
     "$cid" /bin/sh < "$RENAME_VETH"
 }
 

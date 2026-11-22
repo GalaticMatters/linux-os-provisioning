@@ -890,7 +890,9 @@ services:
   ubuntu111:
     hostname: ubuntu111
     image: cybersecurity-ubuntu111:1
-    build: ./ubuntu111
+    build:
+      context: .
+      dockerfile: ubuntu111/Dockerfile
     runtime: kata-runtime
     mem_limit: 4g
     shm_size: "1gb"
@@ -906,16 +908,12 @@ services:
       CUSTOM_USER: ${DESKTOP_USER:-van}
       PASSWORD: ${DESKTOP_PASSWORD:-}
       TITLE: Ubuntu111 desktop
+      S6_CMD_WAIT_FOR_SERVICES_MAXTIME: "0"
       VETH_PEER_MAC: 02:42:ff:6f:01:01
       VETH_PEER_SUBNET: 10.255.111.0/24
     volumes:
       - ubuntu111-config:/config
-      - ./scripts/rename-veth-peer.sh:/custom-cont-init.d/97-veth-peer:ro
-      - ./ubuntu/cont-init.d/98-kata-net:/custom-cont-init.d/98-kata-net:ro
-      - ./ubuntu/cont-init.d/99-packages:/custom-cont-init.d/99-packages:ro
-      - ./kali/cont-init.d/99-route-host:/custom-cont-init.d/99-route-host:ro
-      - ./ubuntu/custom-services.d/sshd:/custom-services.d/sshd:ro
-      - ./ubuntu/udev/70-veth-peer.rules:/etc/udev/rules.d/70-veth-peer.rules:ro
+      - ./ubuntu/custom-services.d:/custom-services.d:ro
     extra_hosts: *ubuntu111-hosts
     networks:
       desktop:

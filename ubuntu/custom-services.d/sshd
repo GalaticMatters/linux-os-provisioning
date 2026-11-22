@@ -1,9 +1,10 @@
 #!/usr/bin/with-contenv bash
-# ubuntu111 is a desktop image and does not ship sshd. Without this, SSH to
-# the container is connection refused. The account is CUSTOM_USER (van) and
-# the password is PASSWORD, the same pair as the web login.
-# This file must sit directly in /custom-services.d. A run script in a
-# subdirectory is never started.
+# ubuntu111 sshd. linuxserver webtop does not ship it. Connection refused
+# on port 22 means this service is not running.
+# Kata: bake openssh-server in ubuntu111/Dockerfile. Do not apt-get unless
+# the binary is missing. Bind-mount the directory /custom-services.d (a
+# file mount on virtiofs is skipped: "is not a file").
+# Listen on 0.0.0.0:22, not lo. Password is PASSWORD from .env (not git).
 set -eu
 
 user="${CUSTOM_USER:-van}"
@@ -22,9 +23,29 @@ case "$user" in
     ;;
 esac
 
+apt_locked() {
+  if command -v fuser >/dev/null 2>&1; then
+    fuser /var/lib/apt/lists/lock >/dev/null 2>&1 && return 0
+    fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && return 0
+    fuser /var/lib/dpkg/lock >/dev/null 2>&1 && return 0
+  fi
+  return 1
+}
+
 if ! command -v sshd >/dev/null 2>&1; then
+  n=0
+  while [ "$n" -lt 24 ] && apt_locked; do
+    echo "sshd: apt lock held; waiting. Do not rm /var/lib/apt/lists/lock."
+    n=$((n + 1))
+    sleep 5
+  done
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server
+fi
+
+if ! command -v sshd >/dev/null 2>&1; then
+  echo "sshd: openssh-server is not installed; SSH will be connection refused" >&2
+  exit 1
 fi
 
 if ! id "$user" >/dev/null 2>&1; then
@@ -38,7 +59,11 @@ if getent group sudo >/dev/null 2>&1; then
 fi
 
 mkdir -p /run/sshd /etc/ssh/sshd_config.d
+chmod 755 /run/sshd
 cat > /etc/ssh/sshd_config.d/ubuntu111.conf << EOF
+Port 22
+AddressFamily inet
+ListenAddress 0.0.0.0
 PasswordAuthentication yes
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes
@@ -49,5 +74,9 @@ UsePAM yes
 EOF
 
 ssh-keygen -A >/dev/null
-echo "sshd for ${user} on port 22"
-exec /usr/sbin/sshd -D -e
+if ! /usr/sbin/sshd -t; then
+  echo "sshd: config test failed" >&2
+  exit 1
+fi
+echo "sshd for ${user} listening on 0.0.0.0:22"
+exec /usr/sbin/sshd -D -e -o Port=22 -o ListenAddress=0.0.0.0 -o AddressFamily=inet
