@@ -74,19 +74,45 @@ container_pid() {
 # so the guest name is veth-peer with no address. Kata cannot take a host veth.
 RENAME_VETH="$PWD/scripts/rename-veth-peer.sh"
 
+# dash has no bash 10#; $((10#01)) is "expecting EOF" and then n is empty,
+# so this script used to invent cybersecurity-veth00 / 10.255..254 and
+# retry docker network create for every pair. Only kali01–30 / ubuntu01–30
+# and 111. Never pair 00.
 pair_num() {
   n=${1#kali}
   n=${n#ubuntu}
-  echo $((10#$n))
+  case "$n" in
+    111)
+      echo 111
+      return 0
+      ;;
+    0[1-9])
+      echo "${n#0}"
+      return 0
+      ;;
+    [1-9]|[12][0-9]|30)
+      echo "$n"
+      return 0
+      ;;
+  esac
+  echo "lab-veth.sh: skip unknown pair '$1' (only kali01–30 / ubuntu01–30 / 111)" >&2
+  return 1
 }
 
 veth_net_name() {
   n=$1
-  if [ "$n" -eq 111 ]; then
-    echo cybersecurity-veth111
-  else
-    printf 'cybersecurity-veth%02d' "$n"
-  fi
+  case "$n" in
+    111)
+      echo cybersecurity-veth111
+      ;;
+    [1-9]|[12][0-9]|30)
+      printf 'cybersecurity-veth%02d' "$n"
+      ;;
+    *)
+      echo "lab-veth.sh: refusing cybersecurity-veth00 (pair '$n')" >&2
+      return 1
+      ;;
+  esac
 }
 
 veth_subnet() { echo "10.255.${1}.0/24"; }
@@ -96,20 +122,20 @@ veth_kali_ip() { echo "10.255.${1}.2"; }
 
 veth_ubuntu_mac() {
   n=$1
-  if [ "$n" -eq 111 ]; then
-    echo 02:42:ff:6f:01:01
-  else
-    printf '02:42:ff:00:%02d:01' "$n"
-  fi
+  case "$n" in
+    111) echo 02:42:ff:6f:01:01 ;;
+    [1-9]|[12][0-9]|30) printf '02:42:ff:00:%02d:01' "$n" ;;
+    *) return 1 ;;
+  esac
 }
 
 veth_kali_mac() {
   n=$1
-  if [ "$n" -eq 111 ]; then
-    echo 02:42:ff:6f:02:02
-  else
-    printf '02:42:ff:00:%02d:02' "$n"
-  fi
+  case "$n" in
+    111) echo 02:42:ff:6f:02:02 ;;
+    [1-9]|[12][0-9]|30) printf '02:42:ff:00:%02d:02' "$n" ;;
+    *) return 1 ;;
+  esac
 }
 
 # Kata's docker pid is the host-side shim netns, not the guest. A host-injected
@@ -241,9 +267,26 @@ ensure_veth_network() {
   net=$1
   subnet=$2
   gw=$3
+  case "$net" in
+    cybersecurity-veth111|cybersecurity-veth0[1-9]|cybersecurity-veth[12][0-9]|cybersecurity-veth30)
+      ;;
+    *)
+      echo "lab-veth.sh: refusing $net (only veth01–30 and veth111)" >&2
+      return 1
+      ;;
+  esac
+  case "$gw" in
+    10.255.111.254|10.255.[1-9].254|10.255.[12][0-9].254|10.255.30.254)
+      ;;
+    *)
+      echo "lab-veth.sh: refusing gateway $gw" >&2
+      return 1
+      ;;
+  esac
   if docker network inspect "$net" >/dev/null 2>&1; then
     return 0
   fi
+  # One attempt. Do not retry a failed create (veth00 used to loop 31 times).
   if docker network create \
     --driver bridge \
     --internal \
@@ -254,7 +297,7 @@ ensure_veth_network() {
     echo "created $net for Kata veth-peer"
     return 0
   fi
-  echo "could not create $net" >&2
+  echo "could not create $net; skip this pair" >&2
   return 1
 }
 
@@ -312,17 +355,16 @@ pair_kata_veth() {
   kali=$1
   ubuntu=$2
   kpid=$3
-  n=$(pair_num "$ubuntu")
-  net=$(veth_net_name "$n")
+  n=$(pair_num "$ubuntu") || return 0
+  net=$(veth_net_name "$n") || return 0
   subnet=$(veth_subnet "$n")
   gw=$(veth_gw "$n")
   uip=$(veth_ubuntu_ip "$n")
   kip=$(veth_kali_ip "$n")
-  umac=$(veth_ubuntu_mac "$n")
-  kmac=$(veth_kali_mac "$n")
+  umac=$(veth_ubuntu_mac "$n") || return 0
+  kmac=$(veth_kali_mac "$n") || return 0
   kcid=$(docker compose ps -q "$kali" 2>/dev/null || true)
   if ! ensure_veth_network "$net" "$subnet" "$gw"; then
-    keep_kali_net "$kali" "$kpid"
     return 0
   fi
   # Leftover runc host veth on Kali (peer netns died with the old Ubuntu).

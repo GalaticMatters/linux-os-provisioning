@@ -17,8 +17,18 @@ hostname_pair() {
     kali[0-9][0-9]|ubuntu[0-9][0-9])
       n=${h#kali}
       n=${n#ubuntu}
-      printf '%s\n' "$((10#$n))"
-      return 0
+      # dash has no 10#; 00 is not a pair.
+      case "$n" in
+        0[1-9])
+          printf '%s\n' "${n#0}"
+          return 0
+          ;;
+        [12][0-9]|30)
+          printf '%s\n' "$n"
+          return 0
+          ;;
+      esac
+      return 1
       ;;
   esac
   return 1

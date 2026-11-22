@@ -411,7 +411,8 @@ Re-run [`scripts/render.py`](scripts/render.py) after `KALI_COUNT`, `UBUNTU_COUN
 - **`Unknown runtime specified kata-runtime`.** `sudo ./scripts/install-ubuntu111-kata.sh`, then `docker info | grep -i runtime`, then `./scripts/lab.sh rebuild`.
 - **No `/dev/kvm` / QEMU errors.** BIOS VT-x/AMD-V, or nested virt if this host is a VM. Kata will not start without `/dev/kvm`.
 - **Ubuntu has no internet.** Guest `resolv.conf` still `127.0.0.11`. Recreate that box after the installer (`rebuild` or ubuntu111 `--force-recreate`). Ping `1.1.1.1`.
-- **`veth-peer` missing.** Do not inject a host veth into Kata. `./scripts/lab.sh on` if the pair is down, then `sudo ./scripts/lab-veth.sh`.
+- **`veth-peer` missing.** Do not inject a host veth into Kata. `sudo ./scripts/lab-veth.sh`. Pairs are kali01–30 / ubuntu01–30 and 111 only.
+- **`lab-veth.sh: expecting EOF: "10#01"` / `cybersecurity-veth00` / `10.255..254`.** dash cannot parse `10#01`. That emptied the pair id, invented veth00, and `docker network create` failed once per pair (looked like a retry loop). Pull this fix; `lab-veth.sh` skips a failed create instead of inventing pair 00. Do not restart dnsmasq.
 - **kali111 cannot ping/SSH ubuntu111.** Use hostname `ubuntu111` on the desktop bridge, not `10.0.253.51`. `sshd` must listen on `0.0.0.0:22`.
 - **ProLiant cannot ping `10.0.253.11`.** Expected without `cyber-shim`. Use `docker exec` or `sudo ./scripts/lab-veth.sh`.
 - **Ubuntu exits immediately.** Set `SSH_PUBLIC_KEY` or `SSH_PASSWORD`. `docker compose logs ubuntu01`.
