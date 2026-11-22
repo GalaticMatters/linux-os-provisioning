@@ -114,9 +114,21 @@ iface_name() {
   printf '%s\n' "$name"
 }
 
+# iproute2 dumps every link, including veth-peer. The other end lives in the
+# Ubuntu container netns. `ip link set netns $pid` does not install a netnsid,
+# so a later `ip -o link show` prints "Error: Peer netns reference is invalid."
+# That is not a failed move and must not hit stdout/stderr on a rerun.
+link_by_mac() {
+  pid=$1
+  mac=$2
+  nsenter -t "$pid" -n ip -o link show 2>/dev/null |
+    awk -v mac="$mac" 'BEGIN { mac = tolower(mac) } tolower($0) ~ mac { print $2; exit }'
+}
+
 keep_kali_net() {
   svc=$1
   pid=$2
+  quiet=${3:-}
   nsenter -t "$pid" -m /bin/sh -c 'mkdir -p /etc/NetworkManager/conf.d
 printf "%s\n" "[keyfile]" "unmanaged-devices=interface-name:veth-peer" > /etc/NetworkManager/conf.d/veth-peer-unmanaged.conf
 if command -v nmcli >/dev/null 2>&1; then
@@ -139,16 +151,17 @@ fi' || true
         10.255.111.*) continue ;;
       esac
       # ip -o link prints eth0@if3320: — the kernel device is eth0.
-      raw=$(nsenter -t "$pid" -n ip -o link show | awk -v mac="$mac" 'BEGIN { mac = tolower(mac) } tolower($0) ~ mac { print $2; exit }')
+      raw=$(link_by_mac "$pid" "$mac")
       iface=$(iface_name "$raw")
-      if [ -z "$iface" ]; then
+      # veth-peer is the lab cable (no address). Never treat it as eth0/eth1.
+      if [ -z "$iface" ] || [ "$iface" = "veth-peer" ]; then
         echo "$svc has no interface for $ip" >&2
         continue
       fi
       # Leave a correct Docker address alone. Telling NetworkManager to drop
       # eth0 while Selkies is still starting keeps port 3001 closed.
       misplaced=""
-      others=$(nsenter -t "$pid" -n ip -o -4 addr show | awk -v ip="$ip/" '$3 == "inet" && index($4, ip) == 1 { print $2 }')
+      others=$(nsenter -t "$pid" -n ip -o -4 addr show 2>/dev/null | awk -v ip="$ip/" '$3 == "inet" && index($4, ip) == 1 { print $2 }')
       for other in $others; do
         other=$(iface_name "$other")
         if [ -n "$other" ] && [ "$other" != "$iface" ]; then
@@ -156,13 +169,13 @@ fi' || true
           nsenter -t "$pid" -n ip addr del "$ip/$prefix" dev "$other" || true
         fi
       done
-      if ! nsenter -t "$pid" -n ip -o -4 addr show dev "$iface" | awk -v ip="$ip/" '$3 == "inet" && index($4, ip) == 1 { found = 1 } END { exit !found }'; then
-        nsenter -t "$pid" -n ip link set "$iface" up
+      if ! nsenter -t "$pid" -n ip -o -4 addr show dev "$iface" 2>/dev/null | awk -v ip="$ip/" '$3 == "inet" && index($4, ip) == 1 { found = 1 } END { exit !found }'; then
+        nsenter -t "$pid" -n ip link set "$iface" up 2>/dev/null
         nsenter -t "$pid" -n ip addr replace "$ip/$prefix" dev "$iface"
         echo "$svc $ip/$prefix restored on $iface"
       elif [ -n "$misplaced" ]; then
         echo "$svc $ip/$prefix moved back to $iface"
-      else
+      elif [ -z "$quiet" ]; then
         echo "$svc $ip/$prefix is on $iface"
       fi
       case "$name" in
@@ -268,7 +281,7 @@ pair_kata_veth() {
   connect_veth111 "$kali" "$VETH111_KALI_IP" || true
   rename_guest_veth "$ubuntu" "$VETH111_UBUNTU_MAC" || true
   rename_guest_veth "$kali" "$VETH111_KALI_MAC" || true
-  keep_kali_net "$kali" "$kpid"
+  keep_kali_net "$kali" "$kpid" quiet
   if guest_has_veth "$ubuntu" && guest_has_veth "$kali"; then
     echo "$kali and $ubuntu are paired on veth-peer (Kata extra virtio NIC on $VETH111_NET)"
   else
@@ -298,7 +311,7 @@ pair_veth() {
   fi
   if has_veth "$kpid" && has_veth "$upid"; then
     echo "$kali and $ubuntu already have veth-peer"
-    keep_kali_net "$kali" "$kpid"
+    keep_kali_net "$kali" "$kpid" quiet
     return 0
   fi
   if has_veth "$kpid"; then
