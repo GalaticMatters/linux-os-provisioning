@@ -11,14 +11,39 @@ cd "$(dirname "$0")/.."
 # `extra-containers-off` stops only those seven.
 export COMPOSE_PROFILES=""
 
+# One QEMU per Ubuntu guest. Thirty at once is why compose sits at
+# "up 46/62" after creating veth01–30 (30 nets + 32 containers = 62).
+KATA_BATCH=${KATA_BATCH:-5}
+
 fleet=""
 ubuntu=""
+kali=""
 n=1
 while [ "$n" -le 30 ]; do
-  fleet="$fleet kali$(printf '%02d' "$n") ubuntu$(printf '%02d' "$n")"
-  ubuntu="$ubuntu ubuntu$(printf '%02d' "$n")"
+  tag=$(printf '%02d' "$n")
+  fleet="$fleet kali${tag} ubuntu${tag}"
+  ubuntu="$ubuntu ubuntu${tag}"
+  kali="$kali kali${tag}"
   n=$((n + 1))
 done
+
+# Recreate/start Ubuntu Kata guests a few at a time. Extra args are
+# passed to `docker compose up -d` (rebuild uses --force-recreate --no-deps).
+up_kata_ubuntu() {
+  n=1
+  while [ "$n" -le 30 ]; do
+    batch=""
+    i=0
+    while [ "$i" -lt "$KATA_BATCH" ] && [ "$n" -le 30 ]; do
+      batch="$batch ubuntu$(printf '%02d' "$n")"
+      n=$((n + 1))
+      i=$((i + 1))
+    done
+    echo "Kata Ubuntu batch:$batch"
+    # shellcheck disable=SC2086
+    docker compose up -d "$@" $batch
+  done
+}
 
 add_lab_veth() {
   if [ "$(id -u)" -eq 0 ]; then
@@ -30,8 +55,10 @@ add_lab_veth() {
 
 case "${1:-}" in
   on)
+    # Kali is runc (fast). Ubuntu is Kata (QEMU); do not start all 30 at once.
     # shellcheck disable=SC2086
-    docker compose up -d $fleet
+    docker compose up -d $kali
+    up_kata_ubuntu
     add_lab_veth
     ;;
   off)
@@ -64,8 +91,8 @@ case "${1:-}" in
     # ubuntuserver, and vai (all kata-runtime). lab-veth.sh restores
     # veth-peer on the Kali/Ubuntu pairs (Compose extra NIC, not host veth).
     docker compose build ubuntu01
-    # shellcheck disable=SC2086
-    docker compose up -d --force-recreate --no-deps $ubuntu ubuntuserver vai
+    up_kata_ubuntu --force-recreate --no-deps
+    docker compose up -d --force-recreate --no-deps ubuntuserver vai
     add_lab_veth
     ;;
   *)

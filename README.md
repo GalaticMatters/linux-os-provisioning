@@ -162,7 +162,7 @@ sudo ./scripts/lab-veth.sh
 
 Do **not** set `"default-runtime": "kata-runtime"`. Do **not** run `lab.sh on` / `off` for this. Do **not** `docker compose restart` dnsmasq. Do **not** `docker rm $(docker ps -a -q) -f`. Fallback if reload does not list `kata-runtime`: `systemctl restart docker` (`restart: unless-stopped` brings other containers back, including dnsmasq — still do not compose-restart dnsmasq). `KATA_INTERNETWORKING=macvtap` is the fallback if tcfilter cannot attach macvlan. Do not set `none` or `disable_new_netns = true`.
 
-`rebuild` builds `cybersecurity-ubuntu-ssh:1` and force-recreates ubuntu01–30, ubuntuserver, and vai. It does not recreate Kali, Caddy, or dnsmasq. ubuntu111 is extra-containers; recreate it only if you want that desktop too:
+`rebuild` builds `cybersecurity-ubuntu-ssh:1` and force-recreates ubuntu01–30, ubuntuserver, and vai. It does not recreate Kali, Caddy, or dnsmasq. Each Ubuntu box is a Kata QEMU guest, so the first recreate is **slow, not hung**. Compose `up 46/62` is 30 `cybersecurity-vethNN` networks plus 32 containers; veth01–28 appearing quickly is expected. Starting all 30 VMs at once saturates `/dev/kvm`. `rebuild` now starts Ubuntu in batches of 5 (`KATA_BATCH`). Leave a running `up` alone if QEMU processes are increasing. ubuntu111 is extra-containers; recreate it only if you want that desktop too:
 
 ```sh
 docker compose build ubuntu111
@@ -178,7 +178,7 @@ All of these are run on the ProLiant, from the repo.
 | --- | --- |
 | `./scripts/lab.sh on` | Start kali01–30 and ubuntu01–30 only, then `lab-veth.sh` |
 | `./scripts/lab.sh off` | `docker stop` those 60 IDs only. DNS and extras stay up |
-| `./scripts/lab.sh rebuild` | Build Ubuntu image; force-recreate ubuntu01–30, ubuntuserver, vai; then `lab-veth.sh` |
+| `./scripts/lab.sh rebuild` | Build Ubuntu image; force-recreate ubuntu01–30 in Kata batches of 5, then ubuntuserver and vai; then `lab-veth.sh` |
 | `./scripts/lab.sh extra-containers-on` | Start derek, vyas, kali111, ubuntu111, sang, ashraful, vai |
 | `./scripts/lab.sh extra-containers-off` | Stop those seven |
 | `./scripts/lab.sh dns-on` | Start only dnsmasq |
@@ -237,7 +237,7 @@ docker exec kali111 ping -c 2 ubuntu111
 
 [`scheduler/reset-desktops.sh`](scheduler/reset-desktops.sh):
 
-1. Recreate every service labeled `fleet.reset: "true"` — **kali01–30 and ubuntu01–30 only**.
+1. Recreate every service labeled `fleet.reset: "true"` — **kali01–30** (runc, one compose up) **and ubuntu01–30** (Kata, batches of 5).
 2. Restart Caddy (not recreate; CA volume stays).
 3. Run `scripts/lab-veth.sh` so each pair gets `veth-peer` back (Kata virtio extra NIC, not a host veth).
 
@@ -422,3 +422,14 @@ Re-run [`scripts/render.py`](scripts/render.py) after `KALI_COUNT`, `UBUNTU_COUN
 - **Reset did not run.** `docker compose logs scheduler` and `docker compose exec scheduler date` vs `TZ`.
 - **Selkies opens with no password.** That user’s `*_PASSWORD` is empty in `.env`.
 - **Do not `rm` `/var/lib/apt/lists/lock` inside ubuntu111.** Wait until `fuser` is quiet.
+- **`[+] up 46/62` after veth01–28 / ubuntuserver Recreated.** Slow, not hung, unless one box sits in `Created` with no QEMU. 62 = 30 pair networks + 32 Ubuntu Kata containers. `rebuild` now batches those guests (`KATA_BATCH=5`). In another terminal (do not `lab.sh on`/`off`, do not restart dnsmasq):
+
+  ```sh
+  docker compose ps -a --format 'table {{.Name}}\t{{.Status}}\t{{.Health}}' | grep ubuntu
+  docker ps -a --filter name=ubuntu --format 'table {{.Names}}\t{{.Status}}'
+  ps -C qemu-system-x86_64 --no-headers | wc -l
+  free -h
+  ls -l /dev/kvm
+  ```
+
+  Last container still `Created` or `Restarting` is the one to `docker logs`. `dmesg | grep -iE 'oom|kvm'` if QEMU never appears. After `git pull`, `./scripts/lab.sh rebuild` again only if that `up` has finished or been Ctrl-C’d.

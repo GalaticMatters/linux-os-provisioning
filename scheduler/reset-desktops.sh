@@ -33,6 +33,7 @@ if [ "${RESET_INNER:-}" != "1" ]; then
   exec docker run --rm --name cybersecurity-reset \
     -e RESET_INNER=1 \
     -e TZ \
+    -e KATA_BATCH \
     --pid=host \
     --network=host \
     --cap-add NET_ADMIN \
@@ -71,7 +72,43 @@ done
 set +f
 
 log "recreating: $*"
-docker compose -f "$compose_file" up -d --force-recreate --no-deps --renew-anon-volumes "$@"
+
+# Kali is runc. Ubuntu is Kata (one QEMU each). Recreating all 30 Ubuntu
+# guests in one compose up is why the ProLiant sits at "up 46/62".
+KATA_BATCH=${KATA_BATCH:-5}
+kali_svcs=""
+ubuntu_svcs=""
+for svc in "$@"; do
+  case "$svc" in
+    ubuntu[0-9][0-9]|ubuntu[0-9])
+      ubuntu_svcs="$ubuntu_svcs $svc"
+      ;;
+    *)
+      kali_svcs="$kali_svcs $svc"
+      ;;
+  esac
+done
+
+if [ -n "$kali_svcs" ]; then
+  log "recreating Kali (runc):$kali_svcs"
+  # shellcheck disable=SC2086
+  docker compose -f "$compose_file" up -d --force-recreate --no-deps --renew-anon-volumes $kali_svcs
+fi
+
+set -- $ubuntu_svcs
+while [ "$#" -gt 0 ]; do
+  batch=""
+  i=0
+  while [ "$i" -lt "$KATA_BATCH" ] && [ "$#" -gt 0 ]; do
+    batch="$batch $1"
+    shift
+    i=$((i + 1))
+  done
+  log "recreating Kata Ubuntu batch:$batch"
+  # shellcheck disable=SC2086
+  docker compose -f "$compose_file" up -d --force-recreate --no-deps --renew-anon-volumes $batch
+done
+
 log "restarting caddy so it re-resolves desktop addresses"
 docker compose -f "$compose_file" restart caddy
 if command -v ip >/dev/null 2>&1 && command -v nsenter >/dev/null 2>&1 && [ -x "$PWD/scripts/lab-veth.sh" ]; then
