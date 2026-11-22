@@ -31,8 +31,11 @@ RUN printf '%s\n' '#!/bin/sh' 'exit 101' > /usr/sbin/policy-rc.d \
     && rm -f /etc/ssh/ssh_host_* \
     && mkdir -p /run/sshd /etc/ssh/sshd_config.d
 
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod 755 /usr/local/bin/entrypoint.sh
+# Build context is the repo root (compose: dockerfile ubuntu/Dockerfile).
+COPY ubuntu/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY ubuntu/kata-net.sh /usr/local/bin/kata-net.sh
+COPY scripts/rename-veth-peer.sh /usr/local/bin/rename-veth-peer.sh
+RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/kata-net.sh /usr/local/bin/rename-veth-peer.sh
 
 EXPOSE 22
 

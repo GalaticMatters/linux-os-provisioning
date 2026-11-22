@@ -6,15 +6,16 @@
 # Caddy still reaches each kaliNN by container name on the desktop bridge.
 # Persistent desktops on desktop and macvlan: kali111 10.0.253.50, ubuntu111 10.0.253.51, ubuntu100 10.0.253.52, derek 10.0.253.53, vyas 10.0.253.54, sang 10.0.253.85, ashraful 10.0.253.86.
 # kali111, derek, sang, ashraful, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.
-# ubuntu111 is Kata Containers: runtime kata-runtime. Other services stay on runc.
-# ubuntu111 Kata veth-peer is Compose network veth111 (extra virtio NIC), ubuntu111-only.
-# Fleet Ubuntu stays runc until asked. kali01–30 / ubuntu01–30 still use host veth.
+# Ubuntu (ubuntu01–30, ubuntu111, ubuntuserver, vai) is Kata: runtime kata-runtime.
+# Kali stays runc. Do not set Docker default-runtime to kata-runtime.
+# Pair veth-peer is Compose network vethNN (extra virtio NIC on Ubuntu, extra
+# Docker NIC on Kali). Kata cannot take a host veth. ubuntuserver and vai have none.
 # Kata guest DNS cannot use Docker 127.0.0.11. ubuntu111 extra_hosts maps kali111
 # (and the other persistent desktops) to macvlan. Cloudflare still uses Docker DNS
 # on the desktop bridge for http://ubuntu111:3000.
 # extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.
 # The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.
-# Fleet veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.
+# scripts/lab-veth.sh restores veth-peer (rename/flush) after recreate; no host veth.
 # Cloudflare still opens
 # http://kali111:3000, http://derek:3000, http://sang:3000, http://ashraful:3000, and http://ubuntu111:3000.
 # vyas stays http://vyas:3000.
@@ -257,6 +258,7 @@ x-kali: &kali
     - /config:rw,nosuid,nodev,size=${DESKTOP_TMPFS_SIZE:-2g},mode=1777
   volumes:
     - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro
+    - ./scripts/rename-veth-peer.sh:/custom-cont-init.d/97-veth-peer:ro
   labels:
     fleet.reset: "true"
   extra_hosts: *lab-hosts
@@ -271,7 +273,10 @@ x-kali: &kali
 x-ubuntu: &ubuntu
   image: cybersecurity-ubuntu-ssh:1
   mem_limit: 4g
-  build: ./ubuntu
+  runtime: kata-runtime
+  build:
+    context: .
+    dockerfile: ubuntu/Dockerfile
   restart: unless-stopped
   stop_grace_period: 10s
   cap_add:
@@ -281,6 +286,9 @@ x-ubuntu: &ubuntu
     SSH_PUBLIC_KEY: "${SSH_PUBLIC_KEY:-}"
     SSH_PASSWORD: "${SSH_PASSWORD:-}"
     TZ: ${TZ:-UTC}
+    LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}
+    UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}
+    UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}
   labels:
     fleet.reset: "true"
   logging: *json-logs
@@ -289,7 +297,7 @@ x-ubuntu: &ubuntu
     interval: 30s
     timeout: 5s
     retries: 5
-    start_period: 20s
+    start_period: 60s
 
 services:
   kali01:
@@ -300,6 +308,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.55
+      veth01:
+        ipv4_address: 10.255.1.2
+        mac_address: "02:42:ff:00:01:02"
   kali02:
     hostname: kali02
     <<: *kali
@@ -308,6 +319,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.56
+      veth02:
+        ipv4_address: 10.255.2.2
+        mac_address: "02:42:ff:00:02:02"
   kali03:
     hostname: kali03
     <<: *kali
@@ -316,6 +330,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.57
+      veth03:
+        ipv4_address: 10.255.3.2
+        mac_address: "02:42:ff:00:03:02"
   kali04:
     hostname: kali04
     <<: *kali
@@ -324,6 +341,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.58
+      veth04:
+        ipv4_address: 10.255.4.2
+        mac_address: "02:42:ff:00:04:02"
   kali05:
     hostname: kali05
     <<: *kali
@@ -332,6 +352,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.59
+      veth05:
+        ipv4_address: 10.255.5.2
+        mac_address: "02:42:ff:00:05:02"
   kali06:
     hostname: kali06
     <<: *kali
@@ -340,6 +363,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.60
+      veth06:
+        ipv4_address: 10.255.6.2
+        mac_address: "02:42:ff:00:06:02"
   kali07:
     hostname: kali07
     <<: *kali
@@ -348,6 +374,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.61
+      veth07:
+        ipv4_address: 10.255.7.2
+        mac_address: "02:42:ff:00:07:02"
   kali08:
     hostname: kali08
     <<: *kali
@@ -356,6 +385,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.62
+      veth08:
+        ipv4_address: 10.255.8.2
+        mac_address: "02:42:ff:00:08:02"
   kali09:
     hostname: kali09
     <<: *kali
@@ -364,6 +396,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.63
+      veth09:
+        ipv4_address: 10.255.9.2
+        mac_address: "02:42:ff:00:09:02"
   kali10:
     hostname: kali10
     <<: *kali
@@ -372,6 +407,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.64
+      veth10:
+        ipv4_address: 10.255.10.2
+        mac_address: "02:42:ff:00:10:02"
   kali11:
     hostname: kali11
     <<: *kali
@@ -380,6 +418,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.65
+      veth11:
+        ipv4_address: 10.255.11.2
+        mac_address: "02:42:ff:00:11:02"
   kali12:
     hostname: kali12
     <<: *kali
@@ -388,6 +429,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.66
+      veth12:
+        ipv4_address: 10.255.12.2
+        mac_address: "02:42:ff:00:12:02"
   kali13:
     hostname: kali13
     <<: *kali
@@ -396,6 +440,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.67
+      veth13:
+        ipv4_address: 10.255.13.2
+        mac_address: "02:42:ff:00:13:02"
   kali14:
     hostname: kali14
     <<: *kali
@@ -404,6 +451,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.68
+      veth14:
+        ipv4_address: 10.255.14.2
+        mac_address: "02:42:ff:00:14:02"
   kali15:
     hostname: kali15
     <<: *kali
@@ -412,6 +462,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.69
+      veth15:
+        ipv4_address: 10.255.15.2
+        mac_address: "02:42:ff:00:15:02"
   kali16:
     hostname: kali16
     <<: *kali
@@ -420,6 +473,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.70
+      veth16:
+        ipv4_address: 10.255.16.2
+        mac_address: "02:42:ff:00:16:02"
   kali17:
     hostname: kali17
     <<: *kali
@@ -428,6 +484,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.71
+      veth17:
+        ipv4_address: 10.255.17.2
+        mac_address: "02:42:ff:00:17:02"
   kali18:
     hostname: kali18
     <<: *kali
@@ -436,6 +495,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.72
+      veth18:
+        ipv4_address: 10.255.18.2
+        mac_address: "02:42:ff:00:18:02"
   kali19:
     hostname: kali19
     <<: *kali
@@ -444,6 +506,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.73
+      veth19:
+        ipv4_address: 10.255.19.2
+        mac_address: "02:42:ff:00:19:02"
   kali20:
     hostname: kali20
     <<: *kali
@@ -452,6 +517,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.74
+      veth20:
+        ipv4_address: 10.255.20.2
+        mac_address: "02:42:ff:00:20:02"
   kali21:
     hostname: kali21
     <<: *kali
@@ -460,6 +528,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.75
+      veth21:
+        ipv4_address: 10.255.21.2
+        mac_address: "02:42:ff:00:21:02"
   kali22:
     hostname: kali22
     <<: *kali
@@ -468,6 +539,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.76
+      veth22:
+        ipv4_address: 10.255.22.2
+        mac_address: "02:42:ff:00:22:02"
   kali23:
     hostname: kali23
     <<: *kali
@@ -476,6 +550,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.77
+      veth23:
+        ipv4_address: 10.255.23.2
+        mac_address: "02:42:ff:00:23:02"
   kali24:
     hostname: kali24
     <<: *kali
@@ -484,6 +561,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.78
+      veth24:
+        ipv4_address: 10.255.24.2
+        mac_address: "02:42:ff:00:24:02"
   kali25:
     hostname: kali25
     <<: *kali
@@ -492,6 +572,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.79
+      veth25:
+        ipv4_address: 10.255.25.2
+        mac_address: "02:42:ff:00:25:02"
   kali26:
     hostname: kali26
     <<: *kali
@@ -500,6 +583,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.80
+      veth26:
+        ipv4_address: 10.255.26.2
+        mac_address: "02:42:ff:00:26:02"
   kali27:
     hostname: kali27
     <<: *kali
@@ -508,6 +594,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.81
+      veth27:
+        ipv4_address: 10.255.27.2
+        mac_address: "02:42:ff:00:27:02"
   kali28:
     hostname: kali28
     <<: *kali
@@ -516,6 +605,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.82
+      veth28:
+        ipv4_address: 10.255.28.2
+        mac_address: "02:42:ff:00:28:02"
   kali29:
     hostname: kali29
     <<: *kali
@@ -524,6 +616,9 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.83
+      veth29:
+        ipv4_address: 10.255.29.2
+        mac_address: "02:42:ff:00:29:02"
   kali30:
     hostname: kali30
     <<: *kali
@@ -532,186 +627,279 @@ services:
         gw_priority: 100
       lan:
         ipv4_address: 10.0.253.84
+      veth30:
+        ipv4_address: 10.255.30.2
+        mac_address: "02:42:ff:00:30:02"
   ubuntu01:
     hostname: ubuntu01
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.11
+      veth01:
+        ipv4_address: 10.255.1.1
+        mac_address: "02:42:ff:00:01:01"
   ubuntu02:
     hostname: ubuntu02
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.12
+      veth02:
+        ipv4_address: 10.255.2.1
+        mac_address: "02:42:ff:00:02:01"
   ubuntu03:
     hostname: ubuntu03
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.13
+      veth03:
+        ipv4_address: 10.255.3.1
+        mac_address: "02:42:ff:00:03:01"
   ubuntu04:
     hostname: ubuntu04
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.14
+      veth04:
+        ipv4_address: 10.255.4.1
+        mac_address: "02:42:ff:00:04:01"
   ubuntu05:
     hostname: ubuntu05
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.15
+      veth05:
+        ipv4_address: 10.255.5.1
+        mac_address: "02:42:ff:00:05:01"
   ubuntu06:
     hostname: ubuntu06
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.16
+      veth06:
+        ipv4_address: 10.255.6.1
+        mac_address: "02:42:ff:00:06:01"
   ubuntu07:
     hostname: ubuntu07
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.17
+      veth07:
+        ipv4_address: 10.255.7.1
+        mac_address: "02:42:ff:00:07:01"
   ubuntu08:
     hostname: ubuntu08
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.18
+      veth08:
+        ipv4_address: 10.255.8.1
+        mac_address: "02:42:ff:00:08:01"
   ubuntu09:
     hostname: ubuntu09
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.19
+      veth09:
+        ipv4_address: 10.255.9.1
+        mac_address: "02:42:ff:00:09:01"
   ubuntu10:
     hostname: ubuntu10
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.20
+      veth10:
+        ipv4_address: 10.255.10.1
+        mac_address: "02:42:ff:00:10:01"
   ubuntu11:
     hostname: ubuntu11
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.21
+      veth11:
+        ipv4_address: 10.255.11.1
+        mac_address: "02:42:ff:00:11:01"
   ubuntu12:
     hostname: ubuntu12
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.22
+      veth12:
+        ipv4_address: 10.255.12.1
+        mac_address: "02:42:ff:00:12:01"
   ubuntu13:
     hostname: ubuntu13
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.23
+      veth13:
+        ipv4_address: 10.255.13.1
+        mac_address: "02:42:ff:00:13:01"
   ubuntu14:
     hostname: ubuntu14
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.24
+      veth14:
+        ipv4_address: 10.255.14.1
+        mac_address: "02:42:ff:00:14:01"
   ubuntu15:
     hostname: ubuntu15
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.25
+      veth15:
+        ipv4_address: 10.255.15.1
+        mac_address: "02:42:ff:00:15:01"
   ubuntu16:
     hostname: ubuntu16
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.26
+      veth16:
+        ipv4_address: 10.255.16.1
+        mac_address: "02:42:ff:00:16:01"
   ubuntu17:
     hostname: ubuntu17
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.27
+      veth17:
+        ipv4_address: 10.255.17.1
+        mac_address: "02:42:ff:00:17:01"
   ubuntu18:
     hostname: ubuntu18
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.28
+      veth18:
+        ipv4_address: 10.255.18.1
+        mac_address: "02:42:ff:00:18:01"
   ubuntu19:
     hostname: ubuntu19
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.29
+      veth19:
+        ipv4_address: 10.255.19.1
+        mac_address: "02:42:ff:00:19:01"
   ubuntu20:
     hostname: ubuntu20
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.30
+      veth20:
+        ipv4_address: 10.255.20.1
+        mac_address: "02:42:ff:00:20:01"
   ubuntu21:
     hostname: ubuntu21
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.31
+      veth21:
+        ipv4_address: 10.255.21.1
+        mac_address: "02:42:ff:00:21:01"
   ubuntu22:
     hostname: ubuntu22
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.32
+      veth22:
+        ipv4_address: 10.255.22.1
+        mac_address: "02:42:ff:00:22:01"
   ubuntu23:
     hostname: ubuntu23
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.33
+      veth23:
+        ipv4_address: 10.255.23.1
+        mac_address: "02:42:ff:00:23:01"
   ubuntu24:
     hostname: ubuntu24
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.34
+      veth24:
+        ipv4_address: 10.255.24.1
+        mac_address: "02:42:ff:00:24:01"
   ubuntu25:
     hostname: ubuntu25
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.35
+      veth25:
+        ipv4_address: 10.255.25.1
+        mac_address: "02:42:ff:00:25:01"
   ubuntu26:
     hostname: ubuntu26
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.36
+      veth26:
+        ipv4_address: 10.255.26.1
+        mac_address: "02:42:ff:00:26:01"
   ubuntu27:
     hostname: ubuntu27
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.37
+      veth27:
+        ipv4_address: 10.255.27.1
+        mac_address: "02:42:ff:00:27:01"
   ubuntu28:
     hostname: ubuntu28
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.38
+      veth28:
+        ipv4_address: 10.255.28.1
+        mac_address: "02:42:ff:00:28:01"
   ubuntu29:
     hostname: ubuntu29
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.39
+      veth29:
+        ipv4_address: 10.255.29.1
+        mac_address: "02:42:ff:00:29:01"
   ubuntu30:
     hostname: ubuntu30
     <<: *ubuntu
     networks:
       lan:
         ipv4_address: 10.0.253.40
+      veth30:
+        ipv4_address: 10.255.30.1
+        mac_address: "02:42:ff:00:30:01"
   kali111:
     hostname: kali111
     image: lscr.io/linuxserver/kali-linux:latest
@@ -967,13 +1155,21 @@ services:
   ubuntuserver:
     image: cybersecurity-ubuntu-ssh:1
     mem_limit: 4g
-    build: ./ubuntu
+    runtime: kata-runtime
+    build:
+      context: .
+      dockerfile: ubuntu/Dockerfile
     restart: unless-stopped
     stop_grace_period: 10s
+    cap_add:
+      - NET_ADMIN
     environment:
       SSH_USER: ${DESKTOP_USER:-van}
       SSH_PASSWORD: ${DESKTOP_PASSWORD:-}
       TZ: ${TZ:-UTC}
+      LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}
+      UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}
+      UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}
     networks:
       lan:
         ipv4_address: ${UBUNTU_SERVER_IP:-10.0.253.41}
@@ -983,19 +1179,27 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 60s
 
   vai:
     image: cybersecurity-ubuntu-ssh:1
     mem_limit: 4g
-    build: ./ubuntu
+    runtime: kata-runtime
+    build:
+      context: .
+      dockerfile: ubuntu/Dockerfile
     restart: unless-stopped
     stop_grace_period: 10s
     privileged: true
+    cap_add:
+      - NET_ADMIN
     environment:
       SSH_USER: ${DESKTOP_USER:-van}
       SSH_PASSWORD: ${DESKTOP_PASSWORD:-}
       TZ: ${TZ:-UTC}
+      LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}
+      UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}
+      UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}
     volumes:
       - vai-config:/home/${DESKTOP_USER:-van}
     networks:
@@ -1007,7 +1211,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 60s
 
   caddy:
     image: caddy:2.11.7-alpine
@@ -1133,6 +1337,367 @@ networks:
       config:
         - subnet: ${LAN_SUBNET:?Set LAN_SUBNET}
           gateway: ${LAN_GATEWAY:?Set LAN_GATEWAY}
+
+  veth01:
+    name: cybersecurity-veth01
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.1.0/24
+          gateway: 10.255.1.254
+
+  veth02:
+    name: cybersecurity-veth02
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.2.0/24
+          gateway: 10.255.2.254
+
+  veth03:
+    name: cybersecurity-veth03
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.3.0/24
+          gateway: 10.255.3.254
+
+  veth04:
+    name: cybersecurity-veth04
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.4.0/24
+          gateway: 10.255.4.254
+
+  veth05:
+    name: cybersecurity-veth05
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.5.0/24
+          gateway: 10.255.5.254
+
+  veth06:
+    name: cybersecurity-veth06
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.6.0/24
+          gateway: 10.255.6.254
+
+  veth07:
+    name: cybersecurity-veth07
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.7.0/24
+          gateway: 10.255.7.254
+
+  veth08:
+    name: cybersecurity-veth08
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.8.0/24
+          gateway: 10.255.8.254
+
+  veth09:
+    name: cybersecurity-veth09
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.9.0/24
+          gateway: 10.255.9.254
+
+  veth10:
+    name: cybersecurity-veth10
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.10.0/24
+          gateway: 10.255.10.254
+
+  veth11:
+    name: cybersecurity-veth11
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.11.0/24
+          gateway: 10.255.11.254
+
+  veth12:
+    name: cybersecurity-veth12
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.12.0/24
+          gateway: 10.255.12.254
+
+  veth13:
+    name: cybersecurity-veth13
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.13.0/24
+          gateway: 10.255.13.254
+
+  veth14:
+    name: cybersecurity-veth14
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.14.0/24
+          gateway: 10.255.14.254
+
+  veth15:
+    name: cybersecurity-veth15
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.15.0/24
+          gateway: 10.255.15.254
+
+  veth16:
+    name: cybersecurity-veth16
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.16.0/24
+          gateway: 10.255.16.254
+
+  veth17:
+    name: cybersecurity-veth17
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.17.0/24
+          gateway: 10.255.17.254
+
+  veth18:
+    name: cybersecurity-veth18
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.18.0/24
+          gateway: 10.255.18.254
+
+  veth19:
+    name: cybersecurity-veth19
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.19.0/24
+          gateway: 10.255.19.254
+
+  veth20:
+    name: cybersecurity-veth20
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.20.0/24
+          gateway: 10.255.20.254
+
+  veth21:
+    name: cybersecurity-veth21
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.21.0/24
+          gateway: 10.255.21.254
+
+  veth22:
+    name: cybersecurity-veth22
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.22.0/24
+          gateway: 10.255.22.254
+
+  veth23:
+    name: cybersecurity-veth23
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.23.0/24
+          gateway: 10.255.23.254
+
+  veth24:
+    name: cybersecurity-veth24
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.24.0/24
+          gateway: 10.255.24.254
+
+  veth25:
+    name: cybersecurity-veth25
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.25.0/24
+          gateway: 10.255.25.254
+
+  veth26:
+    name: cybersecurity-veth26
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.26.0/24
+          gateway: 10.255.26.254
+
+  veth27:
+    name: cybersecurity-veth27
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.27.0/24
+          gateway: 10.255.27.254
+
+  veth28:
+    name: cybersecurity-veth28
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.28.0/24
+          gateway: 10.255.28.254
+
+  veth29:
+    name: cybersecurity-veth29
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.29.0/24
+          gateway: 10.255.29.254
+
+  veth30:
+    name: cybersecurity-veth30
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: 10.255.30.0/24
+          gateway: 10.255.30.254
+
   veth111:
     name: cybersecurity-veth111
     driver: bridge
@@ -1144,6 +1709,7 @@ networks:
       config:
         - subnet: 10.255.111.0/24
           gateway: 10.255.111.254
+
 
 volumes:
   caddy-data:

@@ -93,8 +93,20 @@ if [ -f /etc/pam.d/sshd ]; then
   sed -i 's/^session[[:space:]]\+required[[:space:]]\+pam_loginuid.so/session optional pam_loginuid.so/' /etc/pam.d/sshd
 fi
 
+# Kata guest: Docker DNS 127.0.0.11 is in the shim. Rename the pair extra
+# NIC to veth-peer (unnumbered). Failures must not block sshd.
+if [ -x /usr/local/bin/kata-net.sh ]; then
+  /usr/local/bin/kata-net.sh || true
+fi
+if [ -x /usr/local/bin/rename-veth-peer.sh ]; then
+  /usr/local/bin/rename-veth-peer.sh || true
+fi
+
 mkdir -p /run/sshd
 cat > /etc/ssh/sshd_config.d/cybersecurity.conf << EOF
+ListenAddress 0.0.0.0
+Port 22
+AddressFamily inet
 PasswordAuthentication ${pass_flag}
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes

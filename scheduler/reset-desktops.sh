@@ -26,8 +26,10 @@ if [ "${RESET_INNER:-}" != "1" ]; then
   fi
   log "using project directory $host_src"
   # Host pid and net namespaces so the same script can put veth-peer back
-  # after recreate. The cable lives in the container network namespace and
-  # dies with it. kali111 and ubuntu111 are not recreated, so theirs stays.
+  # after recreate. The 02:00 job recreates fleet.reset services (kali01–30
+  # and ubuntu01–30). Ubuntu is Kata: lab-veth.sh restores the Compose extra
+  # virtio NIC as veth-peer (no host veth). kali111/ubuntu111 are not
+  # recreated. ubuntuserver and vai are not fleet.reset.
   exec docker run --rm --name cybersecurity-reset \
     -e RESET_INNER=1 \
     -e TZ \
@@ -73,7 +75,7 @@ docker compose -f "$compose_file" up -d --force-recreate --no-deps --renew-anon-
 log "restarting caddy so it re-resolves desktop addresses"
 docker compose -f "$compose_file" restart caddy
 if command -v ip >/dev/null 2>&1 && command -v nsenter >/dev/null 2>&1 && [ -x "$PWD/scripts/lab-veth.sh" ]; then
-  log "adding veth-peer: kali01 with ubuntu01 through kali30 with ubuntu30 (runc); kali111/ubuntu111 if up"
+  log "adding veth-peer: kali01 with ubuntu01 through kali30 with ubuntu30 (Kata extra NIC); kali111/ubuntu111 if up"
   "$PWD/scripts/lab-veth.sh" || log "veth-peer was not added. Run: sudo ./scripts/lab-veth.sh"
 else
   log "veth-peer was not added. Rebuild the scheduler image, or run: sudo ./scripts/lab-veth.sh"

@@ -14,11 +14,11 @@ and on the macvlan at 10.0.253.50 and 10.0.253.51. ubuntu100, derek, and
 vyas stay on the desktop bridge and macvlan at 10.0.253.52–54. derek,
 sang, and ashraful are persistent Kali extra-containers (derek
 10.0.253.53, sang 10.0.253.85, ashraful 10.0.253.86). vyas stays Linux Mint.
-scripts/lab-veth.sh adds an address-less veth-peer for each Kali/Ubuntu
-fleet pair (runc host veth). ubuntu111 is Kata: Compose network
-cybersecurity-veth111 is a Kata extra virtio NIC renamed to veth-peer,
-paired with kali111. That is an ubuntu111-only test; fleet Ubuntu stays
-runc. veth-peer is not the path to 10.0.253.11.
+scripts/lab-veth.sh restores an address-less veth-peer for each Kali/Ubuntu
+pair. Ubuntu (ubuntu01–30, ubuntu111, ubuntuserver, vai) is Kata:
+Compose network cybersecurity-vethNN is a Kata extra virtio NIC renamed
+to veth-peer, paired with kaliNN. Kali stays runc. Kata cannot take a
+host veth. veth-peer is not the path to 10.0.253.11.
 Hosts entries on every Kali desktop and those persistent desktops map
 ubuntuNN names to the Ubuntu macvlan addresses.
 Re-run after changing KALI_COUNT, UBUNTU_COUNT, UBUNTU_IP_START, SERVER_IP, or BASE_DOMAIN.
@@ -194,9 +194,11 @@ PERSISTENT_DESKTOPS: list[tuple[str, str]] = [
 # Browser names Caddy serves on SERVER_IP, besides the kali01–kali30 fleet.
 CADDY_LAN_DESKTOPS = ["kali111", "derek", "sang", "ashraful", "ubuntu100", "ubuntu111"]
 
-# ubuntu111 Kata extra NIC (test only). kali111 is the other end. Not the
-# fleet. Docker assigns these, then rename-veth-peer.sh strips them so the
-# guest name is veth-peer with no address, like the runc pairs.
+# Pair extra NIC: one internal Docker bridge per kaliNN/ubuntuNN pair, plus
+# kali111/ubuntu111. Docker assigns a placeholder IP; rename-veth-peer.sh
+# strips it so the guest name is veth-peer with no address. Ubuntu is Kata
+# (virtio hotplug). Kali is runc on the same bridge. Kata cannot take a
+# host veth. ubuntuserver and vai have no pair network.
 VETH111_NET = "cybersecurity-veth111"
 VETH111_SUBNET = "10.255.111.0/24"
 VETH111_GW = "10.255.111.254"
@@ -204,6 +206,62 @@ VETH111_UBUNTU_IP = "10.255.111.1"
 VETH111_KALI_IP = "10.255.111.2"
 VETH111_UBUNTU_MAC = "02:42:ff:6f:01:01"
 VETH111_KALI_MAC = "02:42:ff:6f:02:02"
+
+
+def veth_pair(n: int) -> dict[str, str]:
+    """Compose extra-NIC parameters for kaliN/ubuntuN (N is 1–30 or 111)."""
+    if n == 111:
+        return {
+            "n": "111",
+            "key": "veth111",
+            "name": VETH111_NET,
+            "subnet": VETH111_SUBNET,
+            "gw": VETH111_GW,
+            "ubuntu_ip": VETH111_UBUNTU_IP,
+            "kali_ip": VETH111_KALI_IP,
+            "ubuntu_mac": VETH111_UBUNTU_MAC,
+            "kali_mac": VETH111_KALI_MAC,
+        }
+    tag = f"{n:02d}"
+    return {
+        "n": str(n),
+        "key": f"veth{tag}",
+        "name": f"cybersecurity-veth{tag}",
+        "subnet": f"10.255.{n}.0/24",
+        "gw": f"10.255.{n}.254",
+        "ubuntu_ip": f"10.255.{n}.1",
+        "kali_ip": f"10.255.{n}.2",
+        "ubuntu_mac": f"02:42:ff:00:{tag}:01",
+        "kali_mac": f"02:42:ff:00:{tag}:02",
+    }
+
+
+def render_veth_network(pair: dict[str, str]) -> list[str]:
+    return [
+        f"  {pair['key']}:",
+        f"    name: {pair['name']}",
+        "    driver: bridge",
+        "    internal: true",
+        "    enable_ipv6: false",
+        "    driver_opts:",
+        '      com.docker.network.bridge.enable_ip_masquerade: "false"',
+        "    ipam:",
+        "      config:",
+        f"        - subnet: {pair['subnet']}",
+        f"          gateway: {pair['gw']}",
+        "",
+    ]
+
+
+def fleet_pair_nums(kali: list[str], ubuntu: list[tuple[str, str]]) -> list[int]:
+    nums: set[int] = set()
+    for name in kali:
+        if name.startswith("kali"):
+            nums.add(int(name[4:], 10))
+    for name, _addr in ubuntu:
+        if name.startswith("ubuntu"):
+            nums.add(int(name[6:], 10))
+    return sorted(n for n in nums if n != 111)
 
 
 def persistent_addr(name: str) -> str:
@@ -319,7 +377,7 @@ def dual_lan(
     gw_priority on that network keeps internet and container-name traffic
     there. The macvlan connected route covers 10.0.253.0/24, so ping and
     SSH to the Ubuntu fleet leave on the LAN interface.
-    veth111 is the ubuntu111 Kata extra NIC (kali111 peer) only.
+    veth111 is the ubuntu111 Kata extra NIC (kali111 peer).
     """
     lines = [
         f"    extra_hosts: {extra_hosts}",
@@ -403,7 +461,7 @@ def render_persistent_kali(
     non-empty. CUSTOM_USER alone does nothing. An empty interpolates to
     PASSWORD= and the desktop opens with no prompt.
     veth111 is kali111 only (peer of Kata ubuntu111). derek/sang/ashraful
-    stay off that network.
+    stay off that network. Fleet kali01–30 attach in the fleet loop.
     """
     if require_password:
         password_line = (
@@ -522,15 +580,16 @@ def render_compose(
         "# Caddy still reaches each kaliNN by container name on the desktop bridge.",
         f"# Persistent desktops on desktop and macvlan: {desktop_note}.",
         "# kali111, derek, sang, ashraful, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.",
-        "# ubuntu111 is Kata Containers: runtime kata-runtime. Other services stay on runc.",
-        "# ubuntu111 Kata veth-peer is Compose network veth111 (extra virtio NIC), ubuntu111-only.",
-        "# Fleet Ubuntu stays runc until asked. kali01–30 / ubuntu01–30 still use host veth.",
+        "# Ubuntu (ubuntu01–30, ubuntu111, ubuntuserver, vai) is Kata: runtime kata-runtime.",
+        "# Kali stays runc. Do not set Docker default-runtime to kata-runtime.",
+        "# Pair veth-peer is Compose network vethNN (extra virtio NIC on Ubuntu, extra",
+        "# Docker NIC on Kali). Kata cannot take a host veth. ubuntuserver and vai have none.",
         "# Kata guest DNS cannot use Docker 127.0.0.11. ubuntu111 extra_hosts maps kali111",
         "# (and the other persistent desktops) to macvlan. Cloudflare still uses Docker DNS",
         "# on the desktop bridge for http://ubuntu111:3000.",
         "# extra_hosts maps kali FQDNs to SERVER_IP (Caddy) and ubuntuNN to the macvlan address.",
         "# The desktop bridge keeps the default route so Caddy still reaches kaliNN:3001.",
-        "# Fleet veth-peer is not a Docker network. scripts/lab-veth.sh adds it with no address.",
+        "# scripts/lab-veth.sh restores veth-peer (rename/flush) after recreate; no host veth.",
         "# Cloudflare still opens",
         "# http://kali111:3000, http://derek:3000, http://sang:3000, http://ashraful:3000, and http://ubuntu111:3000.",
         "# vyas stays http://vyas:3000.",
@@ -563,6 +622,7 @@ def render_compose(
         "    - /config:rw,nosuid,nodev,size=${DESKTOP_TMPFS_SIZE:-2g},mode=1777",
         "  volumes:",
         "    - ./kali/cont-init.d/99-ping:/custom-cont-init.d/99-ping:ro",
+        "    - ./scripts/rename-veth-peer.sh:/custom-cont-init.d/97-veth-peer:ro",
         "  labels:",
         '    fleet.reset: "true"',
         "  extra_hosts: *lab-hosts",
@@ -577,7 +637,10 @@ def render_compose(
         "x-ubuntu: &ubuntu",
         "  image: cybersecurity-ubuntu-ssh:1",
         "  mem_limit: 4g",
-        "  build: ./ubuntu",
+        "  runtime: kata-runtime",
+        "  build:",
+        "    context: .",
+        "    dockerfile: ubuntu/Dockerfile",
         "  restart: unless-stopped",
         "  stop_grace_period: 10s",
         "  cap_add:",
@@ -587,6 +650,9 @@ def render_compose(
         '    SSH_PUBLIC_KEY: "${SSH_PUBLIC_KEY:-}"',
         '    SSH_PASSWORD: "${SSH_PASSWORD:-}"',
         "    TZ: ${TZ:-UTC}",
+        "    LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}",
+        "    UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}",
+        "    UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}",
         "  labels:",
         '    fleet.reset: "true"',
         "  logging: *json-logs",
@@ -595,11 +661,12 @@ def render_compose(
         "    interval: 30s",
         "    timeout: 5s",
         "    retries: 5",
-        "    start_period: 20s",
+        "    start_period: 60s",
         "",
         "services:",
     ]
     for name, addr in zip(kali, kali_addrs):
+        pair = veth_pair(int(name[4:], 10))
         lines += [
             f"  {name}:",
             "    hostname: " + name,
@@ -609,8 +676,12 @@ def render_compose(
             "        gw_priority: 100",
             "      lan:",
             f"        ipv4_address: {addr}",
+            f"      {pair['key']}:",
+            f"        ipv4_address: {pair['kali_ip']}",
+            f'        mac_address: "{pair["kali_mac"]}"',
         ]
     for name, addr in ubuntu:
+        pair = veth_pair(int(name[6:], 10))
         lines += [
             f"  {name}:",
             "    hostname: " + name,
@@ -618,6 +689,9 @@ def render_compose(
             "    networks:",
             "      lan:",
             f"        ipv4_address: {addr}",
+            f"      {pair['key']}:",
+            f"        ipv4_address: {pair['ubuntu_ip']}",
+            f'        mac_address: "{pair["ubuntu_mac"]}"',
         ]
     lines += render_persistent_kali("kali111", "Kali111", veth111=True)
     lines += render_persistent_kali(
@@ -716,13 +790,21 @@ def render_compose(
         "  ubuntuserver:",
         "    image: cybersecurity-ubuntu-ssh:1",
         "    mem_limit: 4g",
-        "    build: ./ubuntu",
+        "    runtime: kata-runtime",
+        "    build:",
+        "      context: .",
+        "      dockerfile: ubuntu/Dockerfile",
         "    restart: unless-stopped",
         "    stop_grace_period: 10s",
+        "    cap_add:",
+        "      - NET_ADMIN",
         "    environment:",
         "      SSH_USER: ${DESKTOP_USER:-van}",
         "      SSH_PASSWORD: ${DESKTOP_PASSWORD:-}",
         "      TZ: ${TZ:-UTC}",
+        "      LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}",
+        "      UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}",
+        "      UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}",
         "    networks:",
         "      lan:",
         "        ipv4_address: ${UBUNTU_SERVER_IP:-10.0.253.41}",
@@ -732,19 +814,27 @@ def render_compose(
         "      interval: 30s",
         "      timeout: 5s",
         "      retries: 5",
-        "      start_period: 20s",
+        "      start_period: 60s",
         "",
         "  vai:",
         "    image: cybersecurity-ubuntu-ssh:1",
         "    mem_limit: 4g",
-        "    build: ./ubuntu",
+        "    runtime: kata-runtime",
+        "    build:",
+        "      context: .",
+        "      dockerfile: ubuntu/Dockerfile",
         "    restart: unless-stopped",
         "    stop_grace_period: 10s",
         "    privileged: true",
+        "    cap_add:",
+        "      - NET_ADMIN",
         "    environment:",
         "      SSH_USER: ${DESKTOP_USER:-van}",
         "      SSH_PASSWORD: ${DESKTOP_PASSWORD:-}",
         "      TZ: ${TZ:-UTC}",
+        "      LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}",
+        "      UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}",
+        "      UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}",
         "    volumes:",
         "      - vai-config:/home/${DESKTOP_USER:-van}",
         "    networks:",
@@ -756,7 +846,7 @@ def render_compose(
         "      interval: 30s",
         "      timeout: 5s",
         "      retries: 5",
-        "      start_period: 20s",
+        "      start_period: 60s",
         "",
         "  caddy:",
         "    image: caddy:2.11.7-alpine",
@@ -850,17 +940,12 @@ def render_compose(
         "      config:",
         "        - subnet: ${LAN_SUBNET:?Set LAN_SUBNET}",
         "          gateway: ${LAN_GATEWAY:?Set LAN_GATEWAY}",
-        "  veth111:",
-        f"    name: {VETH111_NET}",
-        "    driver: bridge",
-        "    internal: true",
-        "    enable_ipv6: false",
-        "    driver_opts:",
-        '      com.docker.network.bridge.enable_ip_masquerade: "false"',
-        "    ipam:",
-        "      config:",
-        f"        - subnet: {VETH111_SUBNET}",
-        f"          gateway: {VETH111_GW}",
+        "",
+    ]
+    for n in fleet_pair_nums(kali, ubuntu):
+        lines += render_veth_network(veth_pair(n))
+    lines += render_veth_network(veth_pair(111))
+    lines += [
         "",
         "volumes:",
         "  caddy-data:",

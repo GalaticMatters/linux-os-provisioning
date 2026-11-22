@@ -60,10 +60,12 @@ case "${1:-}" in
     exec docker compose --profile dns stop dnsmasq
     ;;
   rebuild)
-    # One build of the shared image, then recreate ubuntu01–ubuntu30 and ubuntuserver.
+    # One build of the shared image, then recreate ubuntu01–ubuntu30,
+    # ubuntuserver, and vai (all kata-runtime). lab-veth.sh restores
+    # veth-peer on the Kali/Ubuntu pairs (Compose extra NIC, not host veth).
     docker compose build ubuntu01
     # shellcheck disable=SC2086
-    docker compose up -d --force-recreate --no-deps $ubuntu ubuntuserver
+    docker compose up -d --force-recreate --no-deps $ubuntu ubuntuserver vai
     add_lab_veth
     ;;
   *)

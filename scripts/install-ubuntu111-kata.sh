@@ -1,12 +1,14 @@
 #!/bin/sh
-# ProLiant install of Kata Containers so ubuntu111 can use runtime:
-# kata-runtime. Also patches host Kata networking (tcfilter, /etc copy of
-# the QEMU runtime-rs config). Re-run after git pull; it does not download
-# again when the shim is already there. Docker CE on Ubuntu, KVM/QEMU.
-# Does not docker rm the fleet. Does not change Docker's default runtime
-# (fleet stays runc). Does not start or recreate ubuntu111. Does not
-# uninstall Sysbox. After this, from the repo:
-#   docker compose up -d --force-recreate --no-deps ubuntu111
+# ProLiant install of Kata Containers so Ubuntu boxes can use runtime:
+# kata-runtime (ubuntu01–30, ubuntuserver, vai, ubuntu111). Also patches
+# host Kata networking (tcfilter, /etc copy of the QEMU runtime-rs config).
+# Re-run after git pull; it does not download again when the shim is already
+# there. Docker CE on Ubuntu, KVM/QEMU (/dev/kvm required). Does not docker
+# rm the fleet. Does not change Docker's default runtime (Kali stays runc).
+# Does not start or recreate Ubuntu. Does not uninstall Sysbox. After this,
+# from the repo:
+#   ./scripts/lab.sh rebuild
+#   sudo ./scripts/lab-veth.sh
 set -eu
 
 KATA_VER=4.4.0
@@ -93,7 +95,7 @@ fi
 default_rt=$(docker info --format '{{.DefaultRuntime}}' 2>/dev/null || true)
 if [ -n "$default_rt" ] && [ "$default_rt" != "runc" ]; then
   echo "WARNING: Default Runtime is $default_rt, not runc. This script will not change it."
-  echo "The fleet should stay on runc. Do not set default-runtime to kata-runtime."
+  echo "Kali should stay on runc. Do not set default-runtime to kata-runtime."
 fi
 
 runtime_registered() {
@@ -242,13 +244,12 @@ if ! runtime_registered; then
 fi
 
 echo "Kata Containers ${KATA_VER} is installed as Docker runtime ${DOCKER_RUNTIME}."
-echo "Default runtime is unchanged (${default_rt:-runc}). Fleet stays runc."
+echo "Default runtime is unchanged (${default_rt:-runc}). Kali stays runc. Ubuntu uses kata-runtime in Compose."
 docker info | grep -i runtime || true
-echo "Recreate only ubuntu111 (do not restart dnsmasq; fleet Ubuntu stays runc):"
-echo "  docker compose build ubuntu111"
-echo "  docker compose up -d --force-recreate --no-deps ubuntu111"
+echo "Recreate Ubuntu (do not restart dnsmasq; do not lab.sh on/off):"
+echo "  ./scripts/lab.sh rebuild"
 echo "  sudo ./scripts/lab-veth.sh"
-echo "Internet is expected after that recreate (guest DNS 1.1.1.1, default route on the desktop bridge)."
-echo "sshd listens on 0.0.0.0:22. From kali111: ping ubuntu111 && ssh van@ubuntu111"
-echo "Guest ip -br: desktop-bridge IP on eth0 (or similar); veth-peer unnumbered until students add IPs."
-echo "Sysbox is unused after that recreate. Uninstall is optional; this script does not remove it."
+echo "Need /dev/kvm. Internet in each Ubuntu guest: DNS 1.1.1.1 (not 127.0.0.11), default route on macvlan (fleet) or desktop bridge (ubuntu111)."
+echo "sshd listens on 0.0.0.0:22. From kali01: ping ubuntu01 && ssh student@ubuntu01"
+echo "Guest ip -br: macvlan 10.0.253.11 on ubuntu01; veth-peer unnumbered until students add IPs."
+echo "Sysbox is unused. Uninstall is optional; this script does not remove it."
