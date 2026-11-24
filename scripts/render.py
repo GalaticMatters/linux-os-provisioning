@@ -881,10 +881,18 @@ def render_compose(
         "      CTFD_SECRET_KEY: ${CTFD_SECRET_KEY:-}",
         "      CTFD_ADMIN_EMAIL: ${CTFD_ADMIN_EMAIL:-ctfd@cybersecurity.lan}",
         "      SECRET_KEY: ${CTFD_SECRET_KEY:-}",
-        "      DATABASE_URL: sqlite:////var/lib/ctfd/ctfd.db",
-        "      UPLOAD_FOLDER: /var/lib/ctfd/uploads",
+        "      DATABASE_URL: sqlite:////home/${CTFD_USER:-ctfd}/ctfd.db",
+        "      UPLOAD_FOLDER: /home/${CTFD_USER:-ctfd}/uploads",
         "    volumes:",
-        "      - /var/lib/cybersecurity/ubuntu100/ctfd:/var/lib/ctfd",
+        # Same 500 GB loop disk as ubuntu100. Subdir only — do not bind
+        # ubuntu100 /config and do not create another .img or named volume.
+        # create_host_path: false so Compose does not mkdir a decoy on the
+        # root fs before the loop is mounted (that hid the disk once).
+        "      - type: bind",
+        "        source: /var/lib/cybersecurity/ubuntu100/ctfd",
+        "        target: /home/${CTFD_USER:-ctfd}",
+        "        bind:",
+        "          create_host_path: false",
         *dual_lan(CTFD_IP),
         "    logging: *json-logs",
         "    healthcheck:",

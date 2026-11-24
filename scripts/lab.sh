@@ -77,11 +77,12 @@ case "${1:-}" in
     if ! docker image inspect cybersecurity-ubuntu-ssh:1 >/dev/null 2>&1; then
       docker compose build ubuntu01
     fi
-    if ! findmnt -n /var/lib/cybersecurity/ubuntu100 >/dev/null 2>&1; then
-      echo "ubuntu100 disk is not mounted. CTFd flags go there: sudo ./scripts/prepare-ubuntu100-disk.sh" >&2
+    if findmnt -n /var/lib/cybersecurity/ubuntu100 >/dev/null 2>&1; then
+      mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd 2>/dev/null || \
+        sudo mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd
+    else
+      echo "ubuntu100 disk is not mounted. Do not mkdir .../ubuntu100/ctfd until it is (that hides the img). sudo ./scripts/prepare-ubuntu100-disk.sh" >&2
     fi
-    mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd 2>/dev/null || \
-      sudo mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd
     if ! docker image inspect cybersecurity-ctfd:1 >/dev/null 2>&1; then
       docker compose build ctfd
     fi

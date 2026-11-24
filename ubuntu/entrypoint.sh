@@ -114,12 +114,18 @@ if [ -x /usr/local/bin/rename-veth-peer.sh ]; then
 fi
 
 # CTFd image only (/opt/CTFd). Fleet Ubuntu has no such tree; sshd still starts.
+# Data is the SSH home (Compose bind of the ubuntu100 disk subdir). Do not
+# mkdir that path on the host from here; the disk must already be mounted.
 start_ctfd() {
   if [ ! -d /opt/CTFd ] || [ ! -x /opt/CTFd/.venv/bin/gunicorn ]; then
     return 0
   fi
-  data=/var/lib/ctfd
+  data=/home/$SSH_USER
+  if command -v findmnt >/dev/null 2>&1 && ! findmnt -n "$data" >/dev/null 2>&1; then
+    echo "ctfd: ${data} is not a mount (host /var/lib/cybersecurity/ubuntu100/ctfd). Flags will not persist. Mount the ubuntu100 disk, mkdir the ctfd subdir on it, recreate ctfd." >&2
+  fi
   mkdir -p "$data/uploads" "$data/logs"
+  chown "$SSH_USER:$SSH_USER" "$data" "$data/uploads" "$data/logs" || true
   secret="${CTFD_SECRET_KEY:-${SECRET_KEY:-}}"
   if [ -z "$secret" ] && [ -f "$data/secret_key" ]; then
     secret=$(cat "$data/secret_key")
@@ -131,8 +137,8 @@ start_ctfd() {
   printf '%s\n' "$secret" > "$data/secret_key"
   chmod 600 "$data/secret_key" || true
   export SECRET_KEY="$secret"
-  export DATABASE_URL="${DATABASE_URL:-sqlite:////var/lib/ctfd/ctfd.db}"
-  export UPLOAD_FOLDER="${UPLOAD_FOLDER:-/var/lib/ctfd/uploads}"
+  export DATABASE_URL="${DATABASE_URL:-sqlite:////home/${SSH_USER}/ctfd.db}"
+  export UPLOAD_FOLDER="${UPLOAD_FOLDER:-/home/${SSH_USER}/uploads}"
   export FLASK_APP=CTFd
   export SKIP_DB_PING=true
   (

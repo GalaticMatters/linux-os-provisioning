@@ -278,7 +278,7 @@ NetworkManager on Kali must ignore `veth-peer` (unmanaged, `ipv4.ignore-auto-dns
 
 ## Persistent desktops, Caddy, Cloudflare
 
-`lab.sh extra-containers-on` starts derek, vyas, kali111, ubuntu111, sang, ashraful, vai, and ctfd. ubuntu100 is a webtop on a 500 GB disk at `/var/lib/cybersecurity/ubuntu100`; it is not in that list and is not wiped at 02:00. ctfd is not fleet.reset and is not in `lab.sh rebuild`. Flags and the sqlite DB live in `/var/lib/cybersecurity/ubuntu100/ctfd` on that same disk (not a new volume).
+`lab.sh extra-containers-on` starts derek, vyas, kali111, ubuntu111, sang, ashraful, vai, and ctfd. ubuntu100 is a webtop on a 500 GB disk at `/var/lib/cybersecurity/ubuntu100`; it is not in that list and is not wiped at 02:00. ctfd is not fleet.reset and is not in `lab.sh rebuild`. Flags and the sqlite DB live in `/var/lib/cybersecurity/ubuntu100/ctfd` on that same disk (not a new volume), bind-mounted at `/home/ctfd` (SSH home and CTFd data). Do not bind ubuntu100 `/config` into ctfd.
 
 derek, sang, ashraful, and kali111 are `linuxserver/kali-linux` (Selkies). Sign-in users come from `.env`. vyas is Linux Mint Cinnamon (`dockerscripts/linuxmint:cinnamon`) with a login page on HTTP 3000, then Firefox and sudo. vyas does not share `DESKTOP_USER`.
 
@@ -290,17 +290,15 @@ Kata Ubuntu (`cybersecurity-ctfd:1`), `mem_limit: 4g`, desktop + macvlan `10.0.2
 
 ```sh
 git pull
-sudo ./scripts/prepare-ubuntu100-disk.sh
+findmnt /var/lib/cybersecurity/ubuntu100
+# must be ubuntu100.img. Only then:
+sudo mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd
 # .env: CTFD_USER=ctfd, CTFD_PASSWORD, CTFD_SECRET_KEY  (do not commit .env)
-docker compose build ctfd
 docker compose up -d --no-deps --force-recreate ctfd
-sudo ./scripts/lab-veth.sh
-docker exec ctfd ip -4 addr
-# 10.0.253.43 on the macvlan NIC; default route stays on the desktop bridge
-ping -c 2 10.0.253.43
+docker exec ctfd ls -la /home/ctfd
 ```
 
-If ctfd is not running yet, `./scripts/lab.sh extra-containers-on` instead of `--force-recreate`. Do **not** `lab.sh on`/`off`. Do **not** restart dnsmasq. Do **not** `rebuild` for this box. `docker compose build ctfd` is a cache hit except for kata-net (do not rebuild ubuntu01).
+Do **not** `lab.sh on`/`off`. Do **not** restart dnsmasq. Do **not** `rebuild` for this box. Do **not** `mkdir` the ctfd subdir if the disk is not mounted (Docker would bind an empty dir on the root fs). `prepare-ubuntu100-disk.sh` already `mkdir`s `ctfd` on the img.
 
 **SSH (this agent cannot reach the ProLiant).** From a lab PC: `ssh ctfd@10.0.253.43` or `ssh ctfd@ctfd.cybersecurity.lan`. From Kali: `ssh ctfd@ctfd`. From the internet: `ssh ssh-ctfd.research101.stream` (see tunnel hostname below; not the ProLiant hop). On the ProLiant:
 
@@ -309,7 +307,8 @@ docker inspect ctfd --format '{{.HostConfig.Runtime}} {{.State.Status}}'
 # kata-runtime running
 docker exec ctfd ss -ltn
 # 0.0.0.0:22 and (after CTFD_SECRET_KEY) 0.0.0.0:8000
-docker exec ctfd ls /var/lib/ctfd
+docker exec ctfd ls -la /home/ctfd
+# ubuntu100 disk subdir (flags, sqlite, uploads). findmnt /home/ctfd should be virtiofs/bind.
 ```
 
 Existing tunnel hostnames (Cloudflare Zero Trust, service type **HTTP** except SSH):
@@ -465,6 +464,7 @@ Re-run [`scripts/render.py`](scripts/render.py) after `KALI_COUNT`, `UBUNTU_COUN
 - **Ubuntu exits immediately.** Set `SSH_PUBLIC_KEY` or `SSH_PASSWORD`. `docker compose logs ubuntu01`.
 - **kali111 `nameserver 192.168.200.1` / names fail.** NM leftover on the pair NIC; that address is not in the lab. `sudo ./scripts/lab-veth.sh`, then `docker exec kali111 cat /etc/resolv.conf` should show `127.0.0.11`. Do not recreate Kali. Do not restart dnsmasq.
 - **Cannot SSH ctfd.** Set `CTFD_PASSWORD` in `.env` (required). Then `docker compose up -d --no-deps ctfd`. From a lab PC `ssh ctfd@10.0.253.43`. Do not `lab.sh on`/`off`.
+- **`/home/ctfd` empty / flags not on the ubuntu100 disk.** Bind is host `/var/lib/cybersecurity/ubuntu100/ctfd` → `/home/ctfd`. `findmnt /var/lib/cybersecurity/ubuntu100` must show the loop img, then `sudo mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd`, then `docker compose up -d --no-deps --force-recreate ctfd`. Do not mkdir that subdir if the disk is not mounted. Do not `lab.sh on`/`off`. Do not restart dnsmasq. `docker exec ctfd ls -la /home/ctfd`.
 - **Names do not resolve.** `./scripts/lab.sh dns-on`.
 - **`known_hosts` mismatch.** 02:00 replaced host keys.
 - **Certificate warning.** Export the CA again.
