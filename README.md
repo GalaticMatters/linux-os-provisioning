@@ -203,6 +203,20 @@ docker compose pull kali01
 
 All 30 Kali services share `lscr.io/linuxserver/kali-linux:latest`. One copy on disk.
 
+## Run these after a Proliant 10 reboot
+
+From `/opt/linux-os-provisioning`, in this order:
+
+```sh
+sudo ./scripts/lab-veth.sh
+docker compose --profile public up -d cloudflared
+./scripts/lab.sh dns-on
+./scripts/lab.sh extra-containers-on
+./scripts/lab.sh on
+```
+
+`lab-veth` restores the shim and `veth-peer`. Skip `lab.sh on` if the fleet should stay off. The ubuntu100 loop is already automatic.
+
 ## Verify
 
 ```sh
