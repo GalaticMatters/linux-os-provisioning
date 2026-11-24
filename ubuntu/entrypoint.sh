@@ -102,6 +102,47 @@ if [ -x /usr/local/bin/rename-veth-peer.sh ]; then
   /usr/local/bin/rename-veth-peer.sh || true
 fi
 
+# CTFd image only (/opt/CTFd). Fleet Ubuntu has no such tree; sshd still starts.
+start_ctfd() {
+  if [ ! -d /opt/CTFd ] || [ ! -x /opt/CTFd/.venv/bin/gunicorn ]; then
+    return 0
+  fi
+  data=/var/lib/ctfd
+  mkdir -p "$data/uploads" "$data/logs"
+  secret="${CTFD_SECRET_KEY:-${SECRET_KEY:-}}"
+  if [ -z "$secret" ] && [ -f "$data/secret_key" ]; then
+    secret=$(cat "$data/secret_key")
+  fi
+  if [ -z "$secret" ]; then
+    echo "ctfd: set CTFD_SECRET_KEY in .env; CTFd not started (sshd still runs)" >&2
+    return 0
+  fi
+  printf '%s\n' "$secret" > "$data/secret_key"
+  chmod 600 "$data/secret_key" || true
+  export SECRET_KEY="$secret"
+  export DATABASE_URL="${DATABASE_URL:-sqlite:////var/lib/ctfd/ctfd.db}"
+  export UPLOAD_FOLDER="${UPLOAD_FOLDER:-/var/lib/ctfd/uploads}"
+  export FLASK_APP=CTFd
+  export SKIP_DB_PING=true
+  (
+    cd /opt/CTFd
+    /opt/CTFd/.venv/bin/flask db upgrade || echo "ctfd: flask db upgrade failed" >&2
+    if [ -n "${CTFD_ADMIN_PASSWORD:-}" ] && [ -f /usr/local/bin/ctfd-ensure-admin.py ]; then
+      /opt/CTFd/.venv/bin/python /usr/local/bin/ctfd-ensure-admin.py || \
+        echo "ctfd: admin seed skipped (use the web setup)" >&2
+    fi
+    exec /opt/CTFd/.venv/bin/gunicorn 'CTFd:create_app()' \
+      --bind 0.0.0.0:8000 \
+      --workers 1 \
+      --worker-class sync \
+      --access-logfile "$data/logs/access.log" \
+      --error-logfile "$data/logs/error.log"
+  ) &
+  echo "ctfd: gunicorn on 0.0.0.0:8000 (data ${data})"
+}
+
+start_ctfd
+
 mkdir -p /run/sshd
 cat > /etc/ssh/sshd_config.d/cybersecurity.conf << EOF
 ListenAddress 0.0.0.0

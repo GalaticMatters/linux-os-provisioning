@@ -7,8 +7,8 @@ cd "$(dirname "$0")/.."
 # `on` is `docker compose up -d` with those names, not a bare `up -d`,
 # so kali111 and the other containers are not recreated.
 # `off` docker stops only those container IDs.
-# `extra-containers-on` starts only derek, vyas, kali111, ubuntu111, sang, ashraful, and vai.
-# `extra-containers-off` stops only those seven.
+# `extra-containers-on` starts derek, vyas, kali111, ubuntu111, sang, ashraful, vai, and ctfd.
+# `extra-containers-off` stops only those eight.
 export COMPOSE_PROFILES=""
 
 # One QEMU per Ubuntu guest. Thirty at once is why compose sits at
@@ -74,11 +74,22 @@ case "${1:-}" in
     if ! docker image inspect cybersecurity-ubuntu111:1 >/dev/null 2>&1; then
       docker compose build ubuntu111
     fi
-    docker compose up -d derek vyas kali111 ubuntu111 sang ashraful vai
+    if ! docker image inspect cybersecurity-ubuntu-ssh:1 >/dev/null 2>&1; then
+      docker compose build ubuntu01
+    fi
+    if ! findmnt -n /var/lib/cybersecurity/ubuntu100 >/dev/null 2>&1; then
+      echo "ubuntu100 disk is not mounted. CTFd flags go there: sudo ./scripts/prepare-ubuntu100-disk.sh" >&2
+    fi
+    mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd 2>/dev/null || \
+      sudo mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd
+    if ! docker image inspect cybersecurity-ctfd:1 >/dev/null 2>&1; then
+      docker compose build ctfd
+    fi
+    docker compose up -d derek vyas kali111 ubuntu111 sang ashraful vai ctfd
     add_lab_veth
     ;;
   extra-containers-off)
-    exec docker compose stop derek vyas kali111 ubuntu111 sang ashraful vai
+    exec docker compose stop derek vyas kali111 ubuntu111 sang ashraful vai ctfd
     ;;
   dns-on)
     exec docker compose --profile dns up -d dnsmasq
@@ -88,8 +99,9 @@ case "${1:-}" in
     ;;
   rebuild)
     # One build of the shared image, then recreate ubuntu01–ubuntu30,
-    # ubuntuserver, and vai (all kata-runtime). lab-veth.sh restores
-    # veth-peer on the Kali/Ubuntu pairs (Compose extra NIC, not host veth).
+    # ubuntuserver, and vai (all kata-runtime). Does not recreate ctfd.
+    # lab-veth.sh restores veth-peer on the Kali/Ubuntu pairs (Compose extra
+    # NIC, not host veth).
     docker compose build ubuntu01
     up_kata_ubuntu --force-recreate --no-deps
     docker compose up -d --force-recreate --no-deps ubuntuserver vai

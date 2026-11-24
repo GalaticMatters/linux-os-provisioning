@@ -7,6 +7,7 @@ The example LAN is 10.0.253.0/24. The server is 10.0.253.1. The upstream
 gateway 10.0.253.254 is not assigned to a container. 10.0.253.2 through
 10.0.253.10 are reserved and are not assigned to Ubuntu. ubuntu01 is
 10.0.253.11 and ubuntu30 is 10.0.253.40. ubuntuserver is 10.0.253.41.
+ctfd is 10.0.253.43 (desktop + macvlan). vai is 10.0.253.42.
 kali01–kali30 resolve to 10.0.253.1 for browsers and also take
 10.0.253.55–84 on the macvlan, so a re-render keeps that block. They stay
 on the desktop bridge for Caddy. kali111 and ubuntu111 are on that bridge
@@ -15,7 +16,7 @@ vyas stay on the desktop bridge and macvlan at 10.0.253.52–54. derek,
 sang, and ashraful are persistent Kali extra-containers (derek
 10.0.253.53, sang 10.0.253.85, ashraful 10.0.253.86). vyas stays Linux Mint.
 scripts/lab-veth.sh restores an address-less veth-peer for each Kali/Ubuntu
-pair. Ubuntu (ubuntu01–30, ubuntu111, ubuntuserver, vai) is Kata:
+pair. Ubuntu (ubuntu01–30, ubuntu111, ubuntuserver, vai, ctfd) is Kata:
 Compose network cybersecurity-vethNN is a Kata extra virtio NIC renamed
 to veth-peer, paired with kaliNN. Kali stays runc. Kata cannot take a
 host veth. veth-peer is not the path to 10.0.253.11.
@@ -146,6 +147,7 @@ def ubuntu_ips(
         reserved.add(ipv4(raw, "FLEET_KALI_IP_START"))
     # vai is a persistent SSH box at 10.0.253.42, next to ubuntuserver.
     reserved.add(ipv4(VAI_IP, "VAI_IP"))
+    reserved.add(ipv4(CTFD_IP, "CTFD_IP"))
     chosen: list[str] = []
     for offset in range(count):
         try:
@@ -174,6 +176,9 @@ def fleet_names(prefix: str, count: int) -> list[str]:
 # ubuntuserver (.41) and outside ubuntu01–30 (.11–.40), the persistent
 # desktops (.50–.54), the Kali fleet (.55–.84), sang (.85), and ashraful (.86).
 VAI_IP = "10.0.253.42"
+# ctfd is Kata Ubuntu (SSH + CTFd :8000) on desktop + macvlan. Next free
+# after vai. Not a desktop. Flags live on the ubuntu100 disk.
+CTFD_IP = "10.0.253.43"
 
 
 # Persistent desktops that stay up across lab off. Each is on the Compose
@@ -292,6 +297,7 @@ def check_persistent_desktops(
         forbidden.add(ipv4(raw, "UBUNTU_IP_START"))
     forbidden.add(ipv4(server_box, "UBUNTU_SERVER_IP"))
     forbidden.add(ipv4(VAI_IP, "VAI_IP"))
+    forbidden.add(ipv4(CTFD_IP, "CTFD_IP"))
     seen: set[ipaddress.IPv4Address] = set()
     for name, raw in PERSISTENT_DESKTOPS:
         addr = ipv4(raw, name)
@@ -352,6 +358,7 @@ def check_fleet_kali(
         forbidden.add(ipv4(raw, "UBUNTU_IP_START"))
     forbidden.add(ipv4(server_box, "UBUNTU_SERVER_IP"))
     forbidden.add(ipv4(VAI_IP, "VAI_IP"))
+    forbidden.add(ipv4(CTFD_IP, "CTFD_IP"))
     seen: set[ipaddress.IPv4Address] = set()
     for index, raw in enumerate(addrs, 1):
         addr = ipv4(raw, f"kali{index:02d}")
@@ -580,10 +587,10 @@ def render_compose(
         "# Caddy still reaches each kaliNN by container name on the desktop bridge.",
         f"# Persistent desktops on desktop and macvlan: {desktop_note}.",
         "# kali111, derek, sang, ashraful, and ubuntu111 are on the desktop bridge with cloudflared and on macvlan.",
-        "# Ubuntu (ubuntu01–30, ubuntu111, ubuntuserver, vai) is Kata: runtime kata-runtime.",
+        "# Ubuntu (ubuntu01–30, ubuntu111, ubuntuserver, vai, ctfd) is Kata: runtime kata-runtime.",
         "# Kali stays runc. Do not set Docker default-runtime to kata-runtime.",
         "# Pair veth-peer is Compose network vethNN (extra virtio NIC on Ubuntu, extra",
-        "# Docker NIC on Kali). Kata cannot take a host veth. ubuntuserver and vai have none.",
+        "# Docker NIC on Kali). Kata cannot take a host veth. ubuntuserver, vai, and ctfd have none.",
         "# Kata guest DNS cannot use Docker 127.0.0.11. ubuntu111 extra_hosts maps kali111",
         "# (and the other persistent desktops) to macvlan. Cloudflare still uses Docker DNS",
         "# on the desktop bridge for http://ubuntu111:3000.",
@@ -592,7 +599,7 @@ def render_compose(
         "# scripts/lab-veth.sh restores veth-peer (rename/flush) after recreate; no host veth.",
         "# Cloudflare still opens",
         "# http://kali111:3000, http://derek:3000, http://sang:3000, http://ashraful:3000, and http://ubuntu111:3000.",
-        "# vyas stays http://vyas:3000.",
+        "# vyas stays http://vyas:3000. ctfd is http://ctfd:8000 on desktop (Cloudflare), SSH on 10.0.253.43.",
         "# cloudflared reaches the ProLiant sshd as host.docker.internal:22.",
         "# Re-run the script after changing counts, UBUNTU_IP_START, or BASE_DOMAIN.",
         "# PARENT_IFACE, LAN_SUBNET, and LAN_GATEWAY are still read from .env when Compose starts.",
@@ -848,6 +855,43 @@ def render_compose(
         "      retries: 5",
         "      start_period: 60s",
         "",
+        "  ctfd:",
+        "    hostname: ctfd",
+        "    image: cybersecurity-ctfd:1",
+        "    mem_limit: 4g",
+        "    runtime: kata-runtime",
+        "    build:",
+        "      context: .",
+        "      dockerfile: ubuntu/ctfd.Dockerfile",
+        "    restart: unless-stopped",
+        "    stop_grace_period: 10s",
+        "    cap_add:",
+        "      - NET_ADMIN",
+        "    environment:",
+        "      SSH_USER: ${DESKTOP_USER:-van}",
+        "      SSH_PASSWORD: ${DESKTOP_PASSWORD:-}",
+        "      TZ: ${TZ:-UTC}",
+        "      LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}",
+        "      UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}",
+        "      UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}",
+        "      CTFD_SECRET_KEY: ${CTFD_SECRET_KEY:-}",
+        "      CTFD_ADMIN_PASSWORD: ${CTFD_ADMIN_PASSWORD:-}",
+        "      CTFD_ADMIN_NAME: ${CTFD_ADMIN_NAME:-admin}",
+        "      CTFD_ADMIN_EMAIL: ${CTFD_ADMIN_EMAIL:-admin@cybersecurity.lan}",
+        "      SECRET_KEY: ${CTFD_SECRET_KEY:-}",
+        "      DATABASE_URL: sqlite:////var/lib/ctfd/ctfd.db",
+        "      UPLOAD_FOLDER: /var/lib/ctfd/uploads",
+        "    volumes:",
+        "      - /var/lib/cybersecurity/ubuntu100/ctfd:/var/lib/ctfd",
+        *dual_lan(CTFD_IP),
+        "    logging: *json-logs",
+        "    healthcheck:",
+        '      test: ["CMD-SHELL", "bash -c \'echo >/dev/tcp/127.0.0.1/22\'"]',
+        "      interval: 30s",
+        "      timeout: 5s",
+        "      retries: 5",
+        "      start_period: 60s",
+        "",
         "  caddy:",
         "    image: caddy:2.11.7-alpine",
         "    mem_limit: 4g",
@@ -1082,7 +1126,8 @@ def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_cou
     blurb = (
         f"Ubuntu servers are not browser desktops. "
         f"Shell access is <code>ssh {user}@{first}</code> through <code>{last}</code>, "
-        f"and <code>ssh van@ubuntuserver.{domain}</code>, port 22."
+        f"and <code>ssh van@ubuntuserver.{domain}</code> / "
+        f"<code>ssh van@ctfd.{domain}</code>, port 22."
     )
     if "%%KALI_LINKS%%" not in template or "%%SSH_BLURB%%" not in template or "%%DESKTOP_BLURB%%" not in template:
         raise SystemExit("caddy/index.template.html is missing a render marker")
@@ -1146,9 +1191,11 @@ def main() -> int:
     server_box = str(ipv4(env.get("UBUNTU_SERVER_IP", "10.0.253.41").strip() or "10.0.253.41", "UBUNTU_SERVER_IP"))
     if server_box in addresses or server_box in {str(server), str(gateway)}:
         raise SystemExit(f"UBUNTU_SERVER_IP {server_box} is already used")
-    extra = [("ubuntuserver", server_box), ("vai", VAI_IP)]
+    extra = [("ubuntuserver", server_box), ("vai", VAI_IP), ("ctfd", CTFD_IP)]
     if VAI_IP in addresses or VAI_IP in {str(server), str(gateway), server_box} or VAI_IP in {addr for _name, addr in PERSISTENT_DESKTOPS}:
         raise SystemExit(f"vai address {VAI_IP} is already used")
+    if CTFD_IP in addresses or CTFD_IP in {str(server), str(gateway), server_box, VAI_IP} or CTFD_IP in {addr for _name, addr in PERSISTENT_DESKTOPS}:
+        raise SystemExit(f"ctfd address {CTFD_IP} is already used")
 
     check_persistent_desktops(subnet, gateway, server, addresses, server_box)
     desktop_ips = {addr for _name, addr in PERSISTENT_DESKTOPS}

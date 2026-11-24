@@ -9,7 +9,7 @@
 # is left quiet. Also add a macvlan shim so this server can ping
 # 10.0.253.11, and the persistent Ubuntu boxes through vai at
 # 10.0.253.42. The shim is the only way off the parent NIC: frames from
-# 10.0.253.1 never reach a macvlan child. ubuntuserver and vai have no
+# 10.0.253.1 never reach a macvlan child. ubuntuserver, vai, and ctfd have no
 # veth-peer.
 set -u
 
@@ -42,9 +42,9 @@ ensure_shim() {
   fi
   ip addr show cyber-shim | grep -q '10.0.253.100/' || ip addr add 10.0.253.100/32 dev cyber-shim
   ip link set cyber-shim up
-  # ubuntu01 (.11) through ubuntu30 (.40), ubuntuserver (.41), vai (.42).
+  # ubuntu01 (.11) through ubuntu30 (.40), ubuntuserver (.41), vai (.42), ctfd (.43).
   n=11
-  while [ "$n" -le 42 ]; do
+  while [ "$n" -le 43 ]; do
     ip route replace "10.0.253.${n}/32" dev cyber-shim
     n=$((n + 1))
   done

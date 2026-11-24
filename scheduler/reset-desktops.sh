@@ -29,7 +29,7 @@ if [ "${RESET_INNER:-}" != "1" ]; then
   # after recreate. The 02:00 job recreates fleet.reset services (kali01–30
   # and ubuntu01–30). Ubuntu is Kata: lab-veth.sh restores the Compose extra
   # virtio NIC as veth-peer (no host veth). kali111/ubuntu111 are not
-  # recreated. ubuntuserver and vai are not fleet.reset.
+  # recreated. ubuntuserver, vai, and ctfd are not fleet.reset.
   exec docker run --rm --name cybersecurity-reset \
     -e RESET_INNER=1 \
     -e TZ \

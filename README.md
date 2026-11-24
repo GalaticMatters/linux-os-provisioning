@@ -2,7 +2,7 @@
 
 Operator guide for the ProLiant lab: thirty Kali desktops in the browser, thirty Ubuntu SSH servers, plus a few persistent boxes. Names sit under `cybersecurity.lan`. Anyone who can open a Kali URL gets a desktop with passwordless sudo inside that container. Keep this on a trusted LAN.
 
-**Ubuntu is Kata. Kali is runc.** ubuntu01–30, ubuntuserver, vai, and ubuntu111 use Compose `runtime: kata-runtime`. Do not set Docker’s `default-runtime` to kata. Passwords live in `.env` only. Never commit `.env`.
+**Ubuntu is Kata. Kali is runc.** ubuntu01–30, ubuntuserver, vai, ubuntu111, and ctfd use Compose `runtime: kata-runtime`. Do not set Docker’s `default-runtime` to kata. Passwords live in `.env` only. Never commit `.env`.
 
 ## What this lab is
 
@@ -48,9 +48,9 @@ flowchart TB
   PL --> Mac["cybersecurity-macvlan"]
   PL --> Veth["cybersecurity-vethNN"]
   Desk --> Kfleet["kali01–30 runc :3001"]
-  Desk --> Persist["kali111 ubuntu111 derek sang ashraful vyas ubuntu100"]
+  Desk --> Persist["kali111 ubuntu111 derek sang ashraful vyas ubuntu100 ctfd"]
   Mac --> Ufleet["ubuntu01–30 kata .11–.40"]
-  Mac --> Upersist["ubuntuserver .41  vai .42"]
+  Mac --> Upersist["ubuntuserver .41  vai .42  ctfd .43"]
   Veth --> Pair["kaliNN ↔ ubuntuNN veth-peer<br/>unnumbered virtio; Kata cannot take a host veth"]
 ```
 
@@ -69,6 +69,7 @@ Two Docker networks matter for reachability:
 | ubuntu01–30 | `10.0.253.11`–`.40` | no | kata-runtime | yes |
 | ubuntuserver | `10.0.253.41` | no | kata-runtime | no |
 | vai | `10.0.253.42` | no | kata-runtime | no |
+| ctfd | `10.0.253.43` | yes (`http://ctfd:8000`) | kata-runtime | no |
 | kali111 | `10.0.253.50` | yes (`http://kali111:3000`) | runc | no |
 | ubuntu111 | `10.0.253.51` | yes (`http://ubuntu111:3000`) | kata-runtime | no |
 | ubuntu100 | `10.0.253.52` | yes | runc (webtop) | no |
@@ -87,8 +88,9 @@ Reserved on VLAN 10: `10.0.253.2`–`.10`. Do not assign them.
 
 - Fleet (ubuntu01–30): ping/SSH the macvlan address (`10.0.253.11` for ubuntu01). From kali01: `ping -c 2 10.0.253.11` then `ssh student@ubuntu01`.
 - ubuntu111: from kali111 use hostname `ubuntu111` on the **desktop bridge**, not `10.0.253.51` and not `veth-peer`. `ping -c 2 ubuntu111` then `ssh van@ubuntu111`.
+- ctfd: SSH like vai (`DESKTOP_USER` / `DESKTOP_PASSWORD`, default `van`). From a lab PC: `ssh van@10.0.253.43` or `ssh van@ctfd.cybersecurity.lan`. From Kali: `ssh van@ctfd`. CTFd HTTP is `http://ctfd:8000` on the desktop bridge (Cloudflare), not Caddy.
 
-The ProLiant cannot ping a macvlan child on the same NIC (`10.0.253.1` → `10.0.253.11` times out). Lab PCs can. From the host use `docker exec` or `sudo ./scripts/lab-veth.sh` (adds `cyber-shim` at `10.0.253.100` and routes `.11`–`.42` and `.50`–`.86`).
+The ProLiant cannot ping a macvlan child on the same NIC (`10.0.253.1` → `10.0.253.11` times out). Lab PCs can. From the host use `docker exec` or `sudo ./scripts/lab-veth.sh` (adds `cyber-shim` at `10.0.253.100` and routes `.11`–`.43` and `.50`–`.86`).
 
 Every Compose service has `mem_limit: 4g` (a ceiling, not a reservation). Desktops also have `shm_size: 1gb`.
 
@@ -109,7 +111,10 @@ Placeholders in `.env.example` are not secrets. Real passwords and keys go only 
 | `TZ` | 02:00 reset timezone (`America/New_York`, not an offset) |
 | `SSH_USER` | Fleet Ubuntu account. Not `root` |
 | `SSH_PUBLIC_KEY` or `SSH_PASSWORD` | At least one. `$` in a password must be `$$` |
-| `DESKTOP_USER` / `DESKTOP_PASSWORD` | kali111, ubuntu100, ubuntu111, ubuntuserver, vai. Default user `van` |
+| `DESKTOP_USER` / `DESKTOP_PASSWORD` | kali111, ubuntu100, ubuntu111, ubuntuserver, vai, ctfd. Default user `van` |
+| `CTFD_SECRET_KEY` | CTFd `SECRET_KEY`. Required for gunicorn on `:8000`. SSH still starts without it |
+| `CTFD_ADMIN_PASSWORD` | Optional. Seeds the CTFd admin once. Empty = web setup wizard |
+| `CTFD_ADMIN_NAME` / `CTFD_ADMIN_EMAIL` | Defaults `admin` / `admin@cybersecurity.lan` |
 | `DEREK_USER` / `DEREK_PASSWORD` | derek. Password required or Compose will not start it |
 | `VYAS_USER` / `VYAS_PASSWORD` | vyas (Mint). Password required |
 | `SANG_USER` / `SANG_PASSWORD` | sang. Password required |
@@ -179,8 +184,8 @@ All of these are run on the ProLiant, from the repo.
 | `./scripts/lab.sh on` | Start kali01–30 and ubuntu01–30 only, then `lab-veth.sh` |
 | `./scripts/lab.sh off` | `docker stop` those 60 IDs only. DNS and extras stay up |
 | `./scripts/lab.sh rebuild` | Build Ubuntu image; force-recreate ubuntu01–30 in Kata batches of 5, then ubuntuserver and vai; then `lab-veth.sh` |
-| `./scripts/lab.sh extra-containers-on` | Start derek, vyas, kali111, ubuntu111, sang, ashraful, vai |
-| `./scripts/lab.sh extra-containers-off` | Stop those seven |
+| `./scripts/lab.sh extra-containers-on` | Start derek, vyas, kali111, ubuntu111, sang, ashraful, vai, ctfd |
+| `./scripts/lab.sh extra-containers-off` | Stop those eight |
 | `./scripts/lab.sh dns-on` | Start only dnsmasq |
 | `./scripts/lab.sh dns-off` | Stop only dnsmasq |
 | `sudo ./scripts/lab-veth.sh` | Restore `veth-peer` on each pair; add `cyber-shim` |
@@ -241,7 +246,7 @@ docker exec kali111 ping -c 2 ubuntu111
 2. Restart Caddy (not recreate; CA volume stays).
 3. Run `scripts/lab-veth.sh` so each pair gets `veth-peer` back (Kata virtio extra NIC, not a host veth).
 
-**Not reset at 02:00:** ubuntuserver, vai, ubuntu111, ubuntu100, kali111, derek, vyas, sang, ashraful, Caddy, dnsmasq, scheduler, cloudflared.
+**Not reset at 02:00:** ubuntuserver, vai, ctfd, ubuntu111, ubuntu100, kali111, derek, vyas, sang, ashraful, Caddy, dnsmasq, scheduler, cloudflared.
 
 Kali home is tmpfs (`/config`) — empty after recreate. Ubuntu fleet has no volume — the writable layer goes away (account, host keys, `/sharedfolder`). The entrypoint recreates `SSH_USER` from `.env`. Packages in the image (`apt`, `ping`, `sshd`, `nfs-kernel-server`) come back. Packages you `apt install` later do not. The NFS lab is not started again.
 
@@ -254,7 +259,7 @@ docker compose up -d --no-deps scheduler
 
 ## Ubuntu is Kata; Kali is runc
 
-Compose sets `runtime: kata-runtime` on ubuntu01–30, ubuntuserver, vai, and ubuntu111. That is Kata Containers (QEMU, runtime-rs shim) with its own guest kernel. Kali, including kali01–30 and kali111, stays runc. Default Docker runtime stays runc.
+Compose sets `runtime: kata-runtime` on ubuntu01–30, ubuntuserver, vai, ubuntu111, and ctfd. That is Kata Containers (QEMU, runtime-rs shim) with its own guest kernel. Kali, including kali01–30 and kali111, stays runc. Default Docker runtime stays runc.
 
 A Kata guest does not see Docker DNS at `127.0.0.11` (that address is in the shim, not the VM). `ubuntu/kata-net.sh` (server image) and `ubuntu/cont-init.d/98-kata-net` (ubuntu111) replace it with `1.1.1.1` / `8.8.8.8`. Fleet Ubuntu default route is the macvlan LAN. ubuntu111 prefers the desktop bridge (Docker NAT) so Cloudflare `http://ubuntu111:3000` still works. Do not `dhclient` the virtio NICs.
 
@@ -264,7 +269,7 @@ Sysbox is unused. Leaving `sysbox-ce` installed is harmless while default-runtim
 
 ### Pair cable (`veth-peer`)
 
-kali01’s `veth-peer` is the other end of ubuntu01’s `veth-peer`, through kali30/ubuntu30, and kali111/ubuntu111. No address, no default route, not the path to `10.0.253.11`. ubuntuserver, vai, ubuntu100, derek, sang, ashraful, and vyas do not have it.
+kali01’s `veth-peer` is the other end of ubuntu01’s `veth-peer`, through kali30/ubuntu30, and kali111/ubuntu111. No address, no default route, not the path to `10.0.253.11`. ubuntuserver, vai, ctfd, ubuntu100, derek, sang, ashraful, and vyas do not have it.
 
 Kata cannot take a host veth: the Docker pid is the shim netns, not the QEMU guest. Each pair uses Compose network `cybersecurity-vethNN` (internal bridge, no masquerade). Kata hotplugs a virtio NIC. `scripts/rename-veth-peer.sh` names it `veth-peer` and flushes the placeholder `10.255.N.0/24` address. Kali is runc on that same L2; its extra Docker NIC is renamed the same way. `lab-veth.sh` does not `ip link set … netns` into a Kata Ubuntu box. After 02:00 or `rebuild`, run (or the job already ran) `sudo ./scripts/lab-veth.sh`.
 
@@ -272,11 +277,35 @@ NetworkManager on Kali must ignore `veth-peer` (unmanaged, `ipv4.ignore-auto-dns
 
 ## Persistent desktops, Caddy, Cloudflare
 
-`lab.sh extra-containers-on` starts derek, vyas, kali111, ubuntu111, sang, ashraful, and vai. ubuntu100 is a webtop on a 500 GB disk at `/var/lib/cybersecurity/ubuntu100`; it is not in that list and is not wiped at 02:00.
+`lab.sh extra-containers-on` starts derek, vyas, kali111, ubuntu111, sang, ashraful, vai, and ctfd. ubuntu100 is a webtop on a 500 GB disk at `/var/lib/cybersecurity/ubuntu100`; it is not in that list and is not wiped at 02:00. ctfd is not fleet.reset and is not in `lab.sh rebuild`. Flags and the sqlite DB live in `/var/lib/cybersecurity/ubuntu100/ctfd` on that same disk (not a new volume).
 
 derek, sang, ashraful, and kali111 are `linuxserver/kali-linux` (Selkies). Sign-in users come from `.env`. vyas is Linux Mint Cinnamon (`dockerscripts/linuxmint:cinnamon`) with a login page on HTTP 3000, then Firefox and sudo. vyas does not share `DESKTOP_USER`.
 
-Caddy on `10.0.253.1` serves `https://kaliNN.cybersecurity.lan`, plus derek, sang, ashraful, ubuntu100, ubuntu111. Upstream for Kali is `:3001` (Selkies HTTPS). Cloudflare uses HTTP `:3000` on the desktop bridge. Do not put another buffering proxy in front.
+Caddy on `10.0.253.1` serves `https://kaliNN.cybersecurity.lan`, plus derek, sang, ashraful, ubuntu100, ubuntu111. Upstream for Kali is `:3001` (Selkies HTTPS). Cloudflare uses HTTP `:3000` on the desktop bridge (`http://ctfd:8000` for CTFd). Do not put another buffering proxy in front.
+
+### CTFd
+
+Kata Ubuntu (`cybersecurity-ctfd:1`), `mem_limit: 4g`, desktop + macvlan `10.0.253.43`. sshd `0.0.0.0:22` as `DESKTOP_USER` (default `van`). gunicorn `:8000`. Not 02:00, not `rebuild`.
+
+```sh
+git pull
+sudo ./scripts/prepare-ubuntu100-disk.sh
+# .env: DESKTOP_PASSWORD, CTFD_SECRET_KEY, optional CTFD_ADMIN_PASSWORD
+docker compose build ctfd
+./scripts/lab.sh extra-containers-on
+```
+
+Do **not** `lab.sh on`/`off`. Do **not** restart dnsmasq. Do **not** `rebuild` for this box.
+
+**SSH (this agent cannot reach the ProLiant).** From a lab PC: `ssh van@10.0.253.43` or `ssh van@ctfd.cybersecurity.lan`. From Kali: `ssh van@ctfd`. On the ProLiant:
+
+```sh
+docker inspect ctfd --format '{{.HostConfig.Runtime}} {{.State.Status}}'
+# kata-runtime running
+docker exec ctfd ss -ltn
+# 0.0.0.0:22 and (after CTFD_SECRET_KEY) 0.0.0.0:8000
+docker exec ctfd ls /var/lib/ctfd
+```
 
 Existing tunnel hostnames (Cloudflare Zero Trust, service type **HTTP** except SSH):
 
@@ -287,9 +316,10 @@ Existing tunnel hostnames (Cloudflare Zero Trust, service type **HTTP** except S
 | `ubuntu111.research101.stream` | `http://ubuntu111:3000` |
 | `kali111.research101.stream` | `http://kali111:3000` |
 | `sang.research101.stream` | `http://sang:3000` |
+| `ctfd.research101.stream` | `http://ctfd:8000` |
 | `ssh.research101.stream` | `ssh://host.docker.internal:22` |
 
-Compose does not create those hostnames. A browser cannot render RDP; replace any leftover RDP routes.
+Compose does not create those hostnames. Add `ctfd.research101.stream` on the **existing** tunnel (Zero Trust → Networks → Tunnels → that tunnel → Public Hostname, type **HTTP**, origin `http://ctfd:8000`). Do not install a second `cloudflared`. Do not send that URL through Caddy. A browser cannot render RDP; replace any leftover RDP routes.
 
 `ssh.research101.stream` is the ProLiant’s own sshd (same as `10.0.253.1:22`), through the tunnel. Port 22 is not published by Compose. Service type **SSH**, plus an Access application so it is not an open login.
 
@@ -325,7 +355,7 @@ Do not `dns-off` for that. `https://derek.cybersecurity.lan` needs `docker compo
 ssh student@ubuntu01.cybersecurity.lan
 ```
 
-Port 22 on the container’s macvlan address. The same `SSH_USER` is created on every fleet Ubuntu at start. ubuntuserver and vai use `DESKTOP_USER` / `DESKTOP_PASSWORD` (default `van`). Root login is off. The account is in `sudo`. Host keys are generated at start (`ssh-keygen -A`); 02:00 wipes them, so clients must update `known_hosts`.
+Port 22 on the container’s macvlan address. The same `SSH_USER` is created on every fleet Ubuntu at start. ubuntuserver, vai, and ctfd use `DESKTOP_USER` / `DESKTOP_PASSWORD` (default `van`). Root login is off. The account is in `sudo`. Host keys are generated at start (`ssh-keygen -A`); 02:00 wipes fleet keys, so clients must update `known_hosts`. ctfd is not wiped at 02:00.
 
 ## DNS
 
@@ -399,7 +429,7 @@ Re-run [`scripts/render.py`](scripts/render.py) after `KALI_COUNT`, `UBUNTU_COUN
 | `scripts/lab-veth.sh` | Pair `veth-peer` + `cyber-shim` |
 | `scripts/install-ubuntu111-kata.sh` | Host Kata install. `/dev/kvm` required |
 | `scripts/install-ubuntu-kata.sh` | Same installer |
-| `ubuntu/` | Fleet Ubuntu image + kata-net + ubuntu111 sshd/cont-init |
+| `ubuntu/` | Fleet Ubuntu image + kata-net + ubuntu111 sshd/cont-init + CTFd image |
 | `ubuntu111/Dockerfile` | Webtop + ping + sshd |
 | `scheduler/` | 02:00 supercronic job |
 | `dns/` | Bundled dnsmasq records |
@@ -417,6 +447,7 @@ Re-run [`scripts/render.py`](scripts/render.py) after `KALI_COUNT`, `UBUNTU_COUN
 - **ProLiant cannot ping `10.0.253.11`.** Expected without `cyber-shim`. Use `docker exec` or `sudo ./scripts/lab-veth.sh`.
 - **Ubuntu exits immediately.** Set `SSH_PUBLIC_KEY` or `SSH_PASSWORD`. `docker compose logs ubuntu01`.
 - **kali111 `nameserver 192.168.200.1` / names fail.** NM leftover on the pair NIC; that address is not in the lab. `sudo ./scripts/lab-veth.sh`, then `docker exec kali111 cat /etc/resolv.conf` should show `127.0.0.11`. Do not recreate Kali. Do not restart dnsmasq.
+- **Cannot SSH ctfd.** `DESKTOP_PASSWORD` in `.env`, then `docker compose up -d --no-deps ctfd`. From a lab PC `ssh van@10.0.253.43`. Do not `lab.sh on`/`off`.
 - **Names do not resolve.** `./scripts/lab.sh dns-on`.
 - **`known_hosts` mismatch.** 02:00 replaced host keys.
 - **Certificate warning.** Export the CA again.

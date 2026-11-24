@@ -16,4 +16,6 @@ mkdir -p "$mnt"
 if ! findmnt -n "$mnt" >/dev/null 2>&1; then
   mount -o loop "$img" "$mnt"
 fi
+# CTFd flags/uploads (not a new volume). Does not replace webtop /config.
+mkdir -p "$mnt/ctfd"
 grep -q 'ubuntu100.img' /etc/fstab || printf '%s %s ext4 loop,nofail 0 2\n' "$img" "$mnt" >> /etc/fstab

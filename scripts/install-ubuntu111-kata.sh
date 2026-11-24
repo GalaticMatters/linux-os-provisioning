@@ -1,6 +1,6 @@
 #!/bin/sh
 # ProLiant install of Kata Containers so Ubuntu boxes can use runtime:
-# kata-runtime (ubuntu01–30, ubuntuserver, vai, ubuntu111). Also patches
+# kata-runtime (ubuntu01–30, ubuntuserver, vai, ubuntu111, ctfd). Also patches
 # host Kata networking (tcfilter, /etc copy of the QEMU runtime-rs config).
 # Re-run after git pull; it does not download again when the shim is already
 # there. Docker CE on Ubuntu, KVM/QEMU (/dev/kvm required). Does not docker
