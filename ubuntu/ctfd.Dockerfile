@@ -25,8 +25,9 @@ RUN apt-get update \
     && mkdir -p /var/lib/ctfd
 
 COPY ubuntu/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY ubuntu/kata-net.sh /usr/local/bin/kata-net.sh
 COPY ubuntu/ctfd-ensure-admin.py /usr/local/bin/ctfd-ensure-admin.py
-RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/ctfd-ensure-admin.py
+RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/kata-net.sh /usr/local/bin/ctfd-ensure-admin.py
 
 WORKDIR /opt/CTFd
 EXPOSE 22 8000

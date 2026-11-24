@@ -293,10 +293,14 @@ git pull
 sudo ./scripts/prepare-ubuntu100-disk.sh
 # .env: CTFD_USER=ctfd, CTFD_PASSWORD, CTFD_SECRET_KEY  (do not commit .env)
 docker compose build ctfd
-./scripts/lab.sh extra-containers-on
+docker compose up -d --no-deps --force-recreate ctfd
+sudo ./scripts/lab-veth.sh
+docker exec ctfd ip -4 addr
+# 10.0.253.43 on the macvlan NIC; default route stays on the desktop bridge
+ping -c 2 10.0.253.43
 ```
 
-Do **not** `lab.sh on`/`off`. Do **not** restart dnsmasq. Do **not** `rebuild` for this box.
+If ctfd is not running yet, `./scripts/lab.sh extra-containers-on` instead of `--force-recreate`. Do **not** `lab.sh on`/`off`. Do **not** restart dnsmasq. Do **not** `rebuild` for this box. `docker compose build ctfd` is a cache hit except for kata-net (do not rebuild ubuntu01).
 
 **SSH (this agent cannot reach the ProLiant).** From a lab PC: `ssh ctfd@10.0.253.43` or `ssh ctfd@ctfd.cybersecurity.lan`. From Kali: `ssh ctfd@ctfd`. From the internet: `ssh ssh-ctfd.research101.stream` (see tunnel hostname below; not the ProLiant hop). On the ProLiant:
 
@@ -457,6 +461,7 @@ Re-run [`scripts/render.py`](scripts/render.py) after `KALI_COUNT`, `UBUNTU_COUN
 - **`lab-veth.sh: expecting EOF: "10#01"` / `cybersecurity-veth00` / `10.255..254`.** dash cannot parse `10#01`. That emptied the pair id, invented veth00, and `docker network create` failed once per pair (looked like a retry loop). Pull this fix; `lab-veth.sh` skips a failed create instead of inventing pair 00. Do not restart dnsmasq.
 - **kali111 cannot ping/SSH ubuntu111.** Use hostname `ubuntu111` on the desktop bridge, not `10.0.253.51`. `sshd` must listen on `0.0.0.0:22`.
 - **ProLiant cannot ping `10.0.253.11` / `10.0.253.43` (Destination Host Unreachable).** Expected from `10.0.253.1` without a cyber-shim route. `sudo ./scripts/lab-veth.sh` (adds `.43` like vai `.42`). Do not `lab.sh on`/`off`. Do not restart dnsmasq.
+- **Ping `10.0.253.43` from cyber-shim `10.0.253.100` is still Destination Host Unreachable.** Shim route is present; CTFd is not answering ARP. Kata left the macvlan virtio unnumbered (address stayed in the shim). Pull, `docker compose build ctfd`, `docker compose up -d --no-deps --force-recreate ctfd`, then `sudo ./scripts/lab-veth.sh`. `docker exec ctfd ip -4 addr` must show `10.0.253.43`. Default route must stay on the desktop bridge (tunnel). Do not `lab.sh on`/`off`. Do not restart dnsmasq.
 - **Ubuntu exits immediately.** Set `SSH_PUBLIC_KEY` or `SSH_PASSWORD`. `docker compose logs ubuntu01`.
 - **kali111 `nameserver 192.168.200.1` / names fail.** NM leftover on the pair NIC; that address is not in the lab. `sudo ./scripts/lab-veth.sh`, then `docker exec kali111 cat /etc/resolv.conf` should show `127.0.0.11`. Do not recreate Kali. Do not restart dnsmasq.
 - **Cannot SSH ctfd.** Set `CTFD_PASSWORD` in `.env` (required). Then `docker compose up -d --no-deps ctfd`. From a lab PC `ssh ctfd@10.0.253.43`. Do not `lab.sh on`/`off`.

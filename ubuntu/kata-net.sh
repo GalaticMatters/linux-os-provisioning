@@ -1,9 +1,13 @@
 #!/bin/sh
-# Kata guest networking for ubuntu01–30, ubuntuserver, vai, and any other
-# box on this image. Docker's embedded DNS (127.0.0.11) lives in the shim
-# netns, not in this VM. Compose gw_priority is not applied inside the VM.
-# The pair extra NIC (10.255.N.0/24, later named veth-peer) is internal
+# Kata guest networking for ubuntu01–30, ubuntuserver, vai, ctfd, and any
+# other box on this image. Docker's embedded DNS (127.0.0.11) lives in the
+# shim netns, not in this VM. Compose gw_priority is not applied inside the
+# VM. The pair extra NIC (10.255.N.0/24, later named veth-peer) is internal
 # and must not be the default route.
+# Dual-homed Kata (desktop + macvlan) often leaves the macvlan virtio
+# unnumbered: Docker put 10.0.253.43 in the shim, not in the guest, so the
+# guest never ARP-replies. LAN_ADDR assigns that address in the guest.
+# Default route stays on the desktop bridge so Cloudflare still works.
 # Do not apt-get. Do not delete apt locks. Always exit 0 so sshd still starts.
 set -u
 
@@ -12,6 +16,8 @@ VETH_PREFIX="10.255."
 PUBLIC_DNS_1="${UPSTREAM_DNS_1:-1.1.1.1}"
 PUBLIC_DNS_2="${UPSTREAM_DNS_2:-8.8.8.8}"
 LAN_GW="${LAN_GATEWAY:-${SERVER_IP:-10.0.253.1}}"
+LAN_ADDR="${LAN_ADDR:-}"
+LAN_PREFIX_LEN="${LAN_PREFIX_LEN:-24}"
 
 iface_name() {
   name=$1
@@ -58,6 +64,90 @@ macvlan_iface() {
         ;;
     esac
   done
+}
+
+# Leftover virtio with no IPv4, or already 10.0.253.*, that is not the
+# desktop bridge and not veth-peer. Compose ipv4_address lives in the
+# shim; Kata often never copies it into the guest.
+macvlan_bare_iface() {
+  desk=$(desktop_iface || true)
+  ip -o link show 2>/dev/null | while read -r _ name rest; do
+    name=$(iface_name "$name")
+    [ "$name" = "lo" ] && continue
+    [ "$name" = "veth-peer" ] && continue
+    [ -n "$desk" ] && [ "$name" = "$desk" ] && continue
+    case "$name" in
+      sit*|tunl*|ip6tnl*|dummy*|erspan*|gre*|gretap*|ip6gre*) continue ;;
+    esac
+    case "$rest" in
+      *link/ether*) ;;
+      *) continue ;;
+    esac
+    addrs=$(ip -4 -o addr show dev "$name" 2>/dev/null || true)
+    case "$addrs" in
+      *"${LAN_PREFIX}"*)
+        printf '%s\n' "$name"
+        return 0
+        ;;
+      *"${VETH_PREFIX}"*)
+        continue
+        ;;
+    esac
+    if [ -z "$addrs" ]; then
+      printf '%s\n' "$name"
+      return 0
+    fi
+  done
+}
+
+wait_for_lan_nic() {
+  [ -n "$LAN_ADDR" ] || return 0
+  n=0
+  while [ "$n" -lt 50 ]; do
+    if [ -n "$(macvlan_iface || true)" ] || [ -n "$(macvlan_bare_iface || true)" ]; then
+      return 0
+    fi
+    n=$((n + 1))
+    sleep 0.2
+  done
+  echo "kata-net: no macvlan NIC for LAN_ADDR ${LAN_ADDR}" >&2
+  return 1
+}
+
+# Put Compose's macvlan address on the guest NIC so this VM answers ARP
+# (cyber-shim 10.0.253.100 -> 10.0.253.43). No-op when LAN_ADDR is unset
+# (fleet / vai already get a single macvlan address from Docker).
+ensure_lan_addr() {
+  [ -n "$LAN_ADDR" ] || return 0
+  case "$LAN_ADDR" in
+    ${LAN_PREFIX}*) ;;
+    *)
+      echo "kata-net: LAN_ADDR ${LAN_ADDR} is not ${LAN_PREFIX}*; skip" >&2
+      return 0
+      ;;
+  esac
+  if ip -4 addr show 2>/dev/null | grep -q "inet ${LAN_ADDR}/"; then
+    echo "kata-net: ${LAN_ADDR} already on a guest NIC"
+    return 0
+  fi
+  wait_for_lan_nic || true
+  mac=$(macvlan_iface || true)
+  if [ -z "$mac" ]; then
+    mac=$(macvlan_bare_iface || true)
+  fi
+  if [ -z "$mac" ]; then
+    echo "kata-net: cannot find a NIC for LAN_ADDR ${LAN_ADDR}" >&2
+    return 0
+  fi
+  ip link set "$mac" up || true
+  if ! ip addr replace "${LAN_ADDR}/${LAN_PREFIX_LEN}" dev "$mac"; then
+    echo "kata-net: ip addr replace ${LAN_ADDR}/${LAN_PREFIX_LEN} dev ${mac} failed" >&2
+    return 0
+  fi
+  if [ -w "/proc/sys/net/ipv4/conf/${mac}/arp_notify" ]; then
+    echo 1 > "/proc/sys/net/ipv4/conf/${mac}/arp_notify" || true
+  fi
+  echo "kata-net: ${LAN_ADDR}/${LAN_PREFIX_LEN} on ${mac} (macvlan LAN)"
 }
 
 gateway_on() {
@@ -135,6 +225,10 @@ prefer_desktop_default() {
   }')
   if [ "$current_dev" = "$desk" ] && [ "$current" = "$gw" ]; then
     echo "kata-net: default route already via ${gw} dev ${desk}"
+    if [ -n "$mac" ]; then
+      ip link set "$mac" up || true
+      ip route replace "${LAN_PREFIX}0/24" dev "$mac" || true
+    fi
     return 0
   fi
   ip route replace default via "$gw" dev "$desk" || true
@@ -175,6 +269,7 @@ fi
 
 wait_for_nics || true
 drop_veth_default
+ensure_lan_addr
 if ! prefer_desktop_default; then
   ensure_macvlan_default
 fi

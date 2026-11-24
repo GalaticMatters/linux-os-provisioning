@@ -874,6 +874,7 @@ def render_compose(
         "      CTFD_USER: ${CTFD_USER:-ctfd}",
         "      CTFD_PASSWORD: ${CTFD_PASSWORD:-}",
         "      TZ: ${TZ:-UTC}",
+        f"      LAN_ADDR: {CTFD_IP}",
         "      LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}",
         "      UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}",
         "      UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}",
