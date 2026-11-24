@@ -298,7 +298,7 @@ docker compose build ctfd
 
 Do **not** `lab.sh on`/`off`. Do **not** restart dnsmasq. Do **not** `rebuild` for this box.
 
-**SSH (this agent cannot reach the ProLiant).** From a lab PC: `ssh ctfd@10.0.253.43` or `ssh ctfd@ctfd.cybersecurity.lan`. From Kali: `ssh ctfd@ctfd`. On the ProLiant:
+**SSH (this agent cannot reach the ProLiant).** From a lab PC: `ssh ctfd@10.0.253.43` or `ssh ctfd@ctfd.cybersecurity.lan`. From Kali: `ssh ctfd@ctfd`. From the internet: `ssh ssh-ctfd.research101.stream` (see tunnel hostname below; not the ProLiant hop). On the ProLiant:
 
 ```sh
 docker inspect ctfd --format '{{.HostConfig.Runtime}} {{.State.Status}}'
@@ -318,15 +318,22 @@ Existing tunnel hostnames (Cloudflare Zero Trust, service type **HTTP** except S
 | `kali111.research101.stream` | `http://kali111:3000` |
 | `sang.research101.stream` | `http://sang:3000` |
 | `ctfd.research101.stream` | `http://ctfd:8000` |
+| `ssh-ctfd.research101.stream` | `ssh://ctfd:22` |
 | `ssh.research101.stream` | `ssh://host.docker.internal:22` |
 
-Compose does not create those hostnames. Add `ctfd.research101.stream` on the **existing** tunnel (Zero Trust → Networks → Tunnels → that tunnel → Public Hostname, type **HTTP**, origin `http://ctfd:8000`). Do not install a second `cloudflared`. Do not send that URL through Caddy. A browser cannot render RDP; replace any leftover RDP routes.
+Compose does not create those hostnames. Add them on the **existing** tunnel (Zero Trust → Networks → Tunnels → that tunnel → Public Hostname). Do not install a second `cloudflared`. Do not send public URLs through Caddy. A browser cannot render RDP; replace any leftover RDP routes.
 
-`ssh.research101.stream` is the ProLiant’s own sshd (same as `10.0.253.1:22`), through the tunnel. Port 22 is not published by Compose. Service type **SSH**, plus an Access application so it is not an open login.
+| Hostname | Type | Origin | Notes |
+| --- | --- | --- | --- |
+| `ctfd.research101.stream` | **HTTP** | `http://ctfd:8000` | CTFd web |
+| `ssh-ctfd.research101.stream` | **SSH** | `ssh://ctfd:22` | Direct into the ctfd container. Add an Access application so it is not an open login |
+| `ssh.research101.stream` | **SSH** | `ssh://host.docker.internal:22` | ProLiant sshd only (`10.0.253.1:22`). Not ctfd |
+
+`ssh.research101.stream` is the ProLiant’s own sshd. Port 22 is not published by Compose. `ssh-ctfd.research101.stream` is **not** that hop: cloudflared (on `desktop`) connects to container `ctfd:22`.
 
 ```sh
 git pull
-docker compose --profile public up -d --force-recreate --no-deps cloudflared
+docker compose --profile public up -d --no-deps cloudflared
 ```
 
 On your laptop (`~/.ssh/config`):
@@ -335,9 +342,13 @@ On your laptop (`~/.ssh/config`):
 Host ssh.research101.stream
   User YOUR_PROLIANT_ACCOUNT
   ProxyCommand cloudflared access ssh --hostname %h
+
+Host ssh-ctfd.research101.stream
+  User ctfd
+  ProxyCommand cloudflared access ssh --hostname %h
 ```
 
-Then `ssh ssh.research101.stream`. First connection opens a browser for Access.
+Then `ssh ssh.research101.stream` (ProLiant) or `ssh ssh-ctfd.research101.stream` (ctfd box). First connection opens a browser for Access.
 
 derek used to be Mint. The named volume `cybersecurity-derek-config` cannot be reused as Kali `/config`. One-time, if that volume is still a Mint home:
 
