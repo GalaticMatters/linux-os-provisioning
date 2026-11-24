@@ -8,7 +8,7 @@
 # address and no default route. A Kata pair that already has veth-peer
 # is left quiet. Also add a macvlan shim so this server can ping
 # 10.0.253.11, and the persistent Ubuntu boxes through vai at
-# 10.0.253.42. The shim is the only way off the parent NIC: frames from
+# 10.0.253.42 and ctfd at 10.0.253.43. The shim is the only way off the parent NIC: frames from
 # 10.0.253.1 never reach a macvlan child. ubuntuserver, vai, and ctfd have no
 # veth-peer.
 set -u
@@ -54,7 +54,7 @@ ensure_shim() {
     ip route replace "10.0.253.${n}/32" dev cyber-shim
     n=$((n + 1))
   done
-  echo "shim cyber-shim is up; ping 10.0.253.11 from this server"
+  echo "shim cyber-shim is up; ping 10.0.253.11 and 10.0.253.43 from this server"
 }
 
 container_pid() {
