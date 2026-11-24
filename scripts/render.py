@@ -868,16 +868,16 @@ def render_compose(
         "    cap_add:",
         "      - NET_ADMIN",
         "    environment:",
-        "      SSH_USER: ${DESKTOP_USER:-van}",
-        "      SSH_PASSWORD: ${DESKTOP_PASSWORD:-}",
+        "      SSH_USER: ${CTFD_USER:-ctfd}",
+        "      SSH_PASSWORD: ${CTFD_PASSWORD:-}",
+        "      CTFD_USER: ${CTFD_USER:-ctfd}",
+        "      CTFD_PASSWORD: ${CTFD_PASSWORD:-}",
         "      TZ: ${TZ:-UTC}",
         "      LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}",
         "      UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}",
         "      UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}",
         "      CTFD_SECRET_KEY: ${CTFD_SECRET_KEY:-}",
-        "      CTFD_ADMIN_PASSWORD: ${CTFD_ADMIN_PASSWORD:-}",
-        "      CTFD_ADMIN_NAME: ${CTFD_ADMIN_NAME:-admin}",
-        "      CTFD_ADMIN_EMAIL: ${CTFD_ADMIN_EMAIL:-admin@cybersecurity.lan}",
+        "      CTFD_ADMIN_EMAIL: ${CTFD_ADMIN_EMAIL:-ctfd@cybersecurity.lan}",
         "      SECRET_KEY: ${CTFD_SECRET_KEY:-}",
         "      DATABASE_URL: sqlite:////var/lib/ctfd/ctfd.db",
         "      UPLOAD_FOLDER: /var/lib/ctfd/uploads",
@@ -1127,7 +1127,7 @@ def render_index(root: Path, domain: str, user: str, kali: list[str], ubuntu_cou
         f"Ubuntu servers are not browser desktops. "
         f"Shell access is <code>ssh {user}@{first}</code> through <code>{last}</code>, "
         f"and <code>ssh van@ubuntuserver.{domain}</code> / "
-        f"<code>ssh van@ctfd.{domain}</code>, port 22."
+        f"<code>ssh ctfd@ctfd.{domain}</code>, port 22."
     )
     if "%%KALI_LINKS%%" not in template or "%%SSH_BLURB%%" not in template or "%%DESKTOP_BLURB%%" not in template:
         raise SystemExit("caddy/index.template.html is missing a render marker")

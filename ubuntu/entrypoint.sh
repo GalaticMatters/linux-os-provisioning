@@ -3,6 +3,17 @@
 # Host keys are created here, on the container's writable layer, so recreate wipes them.
 set -eu
 
+# CTFd image: dedicated account from CTFD_USER / CTFD_PASSWORD. Do not use
+# DESKTOP_USER (that is vai). Do not default a password here.
+if [ -d /opt/CTFd ]; then
+  if [ -z "${CTFD_PASSWORD:-}" ]; then
+    echo "Set CTFD_PASSWORD in .env. Do not commit it. ctfd will not start without it." >&2
+    exit 1
+  fi
+  SSH_USER=${CTFD_USER:-ctfd}
+  SSH_PASSWORD=$CTFD_PASSWORD
+fi
+
 if [ -z "${SSH_USER:-}" ]; then
   echo "Set SSH_USER in .env." >&2
   exit 1
@@ -127,7 +138,7 @@ start_ctfd() {
   (
     cd /opt/CTFd
     /opt/CTFd/.venv/bin/flask db upgrade || echo "ctfd: flask db upgrade failed" >&2
-    if [ -n "${CTFD_ADMIN_PASSWORD:-}" ] && [ -f /usr/local/bin/ctfd-ensure-admin.py ]; then
+    if [ -f /usr/local/bin/ctfd-ensure-admin.py ]; then
       /opt/CTFd/.venv/bin/python /usr/local/bin/ctfd-ensure-admin.py || \
         echo "ctfd: admin seed skipped (use the web setup)" >&2
     fi

@@ -88,7 +88,7 @@ Reserved on VLAN 10: `10.0.253.2`–`.10`. Do not assign them.
 
 - Fleet (ubuntu01–30): ping/SSH the macvlan address (`10.0.253.11` for ubuntu01). From kali01: `ping -c 2 10.0.253.11` then `ssh student@ubuntu01`.
 - ubuntu111: from kali111 use hostname `ubuntu111` on the **desktop bridge**, not `10.0.253.51` and not `veth-peer`. `ping -c 2 ubuntu111` then `ssh van@ubuntu111`.
-- ctfd: SSH like vai (`DESKTOP_USER` / `DESKTOP_PASSWORD`, default `van`). From a lab PC: `ssh van@10.0.253.43` or `ssh van@ctfd.cybersecurity.lan`. From Kali: `ssh van@ctfd`. CTFd HTTP is `http://ctfd:8000` on the desktop bridge (Cloudflare), not Caddy.
+- ctfd: SSH as `CTFD_USER` (default `ctfd`) with `CTFD_PASSWORD` from `.env` — not `DESKTOP_PASSWORD`. From a lab PC: `ssh ctfd@10.0.253.43` or `ssh ctfd@ctfd.cybersecurity.lan`. From Kali: `ssh ctfd@ctfd`. CTFd HTTP is `http://ctfd:8000` on the desktop bridge (Cloudflare), not Caddy. The web admin is the same username and password.
 
 The ProLiant cannot ping a macvlan child on the same NIC (`10.0.253.1` → `10.0.253.11` times out). Lab PCs can. From the host use `docker exec` or `sudo ./scripts/lab-veth.sh` (adds `cyber-shim` at `10.0.253.100` and routes `.11`–`.43` and `.50`–`.86`).
 
@@ -111,16 +111,17 @@ Placeholders in `.env.example` are not secrets. Real passwords and keys go only 
 | `TZ` | 02:00 reset timezone (`America/New_York`, not an offset) |
 | `SSH_USER` | Fleet Ubuntu account. Not `root` |
 | `SSH_PUBLIC_KEY` or `SSH_PASSWORD` | At least one. `$` in a password must be `$$` |
-| `DESKTOP_USER` / `DESKTOP_PASSWORD` | kali111, ubuntu100, ubuntu111, ubuntuserver, vai, ctfd. Default user `van` |
-| `CTFD_SECRET_KEY` | CTFd `SECRET_KEY`. Required for gunicorn on `:8000`. SSH still starts without it |
-| `CTFD_ADMIN_PASSWORD` | Optional. Seeds the CTFd admin once. Empty = web setup wizard |
-| `CTFD_ADMIN_NAME` / `CTFD_ADMIN_EMAIL` | Defaults `admin` / `admin@cybersecurity.lan` |
+| `DESKTOP_USER` / `DESKTOP_PASSWORD` | kali111, ubuntu100, ubuntu111, ubuntuserver, vai. Default user `van`. Not ctfd |
+| `CTFD_USER` | ctfd sshd, sudo, and CTFd web admin. Default `ctfd` |
+| `CTFD_PASSWORD` | Required for ctfd. Container exits if unset. Put it only in `.env`. `$` must be `$$` |
+| `CTFD_SECRET_KEY` | CTFd `SECRET_KEY`. Required for gunicorn on `:8000` |
+| `CTFD_ADMIN_EMAIL` | Default `ctfd@cybersecurity.lan` |
 | `DEREK_USER` / `DEREK_PASSWORD` | derek. Password required or Compose will not start it |
 | `VYAS_USER` / `VYAS_PASSWORD` | vyas (Mint). Password required |
 | `SANG_USER` / `SANG_PASSWORD` | sang. Password required |
 | `ASHRAFUL_USER` / `ASHRAFUL_PASSWORD` | ashraful. Password required |
 
-Empty Selkies passwords turn off the browser login. Compose refuses to start derek, sang, and ashraful until those passwords are set. Ubuntu fleet containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. That is intentional.
+Empty Selkies passwords turn off the browser login. Compose refuses to start derek, sang, and ashraful until those passwords are set. Ubuntu fleet containers exit until `SSH_PUBLIC_KEY` or `SSH_PASSWORD` is set. ctfd exits until `CTFD_PASSWORD` is set. That is intentional.
 
 `KALI_COUNT` and `UBUNTU_COUNT` default to 30. The repo already contains that render.
 
@@ -285,19 +286,19 @@ Caddy on `10.0.253.1` serves `https://kaliNN.cybersecurity.lan`, plus derek, san
 
 ### CTFd
 
-Kata Ubuntu (`cybersecurity-ctfd:1`), `mem_limit: 4g`, desktop + macvlan `10.0.253.43`. sshd `0.0.0.0:22` as `DESKTOP_USER` (default `van`). gunicorn `:8000`. Not 02:00, not `rebuild`.
+Kata Ubuntu (`cybersecurity-ctfd:1`), `mem_limit: 4g`, desktop + macvlan `10.0.253.43`. sshd `0.0.0.0:22` as `CTFD_USER` (default `ctfd`) with `CTFD_PASSWORD`. gunicorn `:8000`. Not 02:00, not `rebuild`. Does not use `DESKTOP_USER` / `DESKTOP_PASSWORD`.
 
 ```sh
 git pull
 sudo ./scripts/prepare-ubuntu100-disk.sh
-# .env: DESKTOP_PASSWORD, CTFD_SECRET_KEY, optional CTFD_ADMIN_PASSWORD
+# .env: CTFD_USER=ctfd, CTFD_PASSWORD, CTFD_SECRET_KEY  (do not commit .env)
 docker compose build ctfd
 ./scripts/lab.sh extra-containers-on
 ```
 
 Do **not** `lab.sh on`/`off`. Do **not** restart dnsmasq. Do **not** `rebuild` for this box.
 
-**SSH (this agent cannot reach the ProLiant).** From a lab PC: `ssh van@10.0.253.43` or `ssh van@ctfd.cybersecurity.lan`. From Kali: `ssh van@ctfd`. On the ProLiant:
+**SSH (this agent cannot reach the ProLiant).** From a lab PC: `ssh ctfd@10.0.253.43` or `ssh ctfd@ctfd.cybersecurity.lan`. From Kali: `ssh ctfd@ctfd`. On the ProLiant:
 
 ```sh
 docker inspect ctfd --format '{{.HostConfig.Runtime}} {{.State.Status}}'
@@ -355,7 +356,7 @@ Do not `dns-off` for that. `https://derek.cybersecurity.lan` needs `docker compo
 ssh student@ubuntu01.cybersecurity.lan
 ```
 
-Port 22 on the container’s macvlan address. The same `SSH_USER` is created on every fleet Ubuntu at start. ubuntuserver, vai, and ctfd use `DESKTOP_USER` / `DESKTOP_PASSWORD` (default `van`). Root login is off. The account is in `sudo`. Host keys are generated at start (`ssh-keygen -A`); 02:00 wipes fleet keys, so clients must update `known_hosts`. ctfd is not wiped at 02:00.
+Port 22 on the container’s macvlan address. The same `SSH_USER` is created on every fleet Ubuntu at start. ubuntuserver and vai use `DESKTOP_USER` / `DESKTOP_PASSWORD` (default `van`). ctfd uses `CTFD_USER` / `CTFD_PASSWORD` (default user `ctfd`). Root login is off. The account is in `sudo`. Host keys are generated at start (`ssh-keygen -A`); 02:00 wipes fleet keys, so clients must update `known_hosts`. ctfd is not wiped at 02:00.
 
 ## DNS
 
@@ -447,7 +448,7 @@ Re-run [`scripts/render.py`](scripts/render.py) after `KALI_COUNT`, `UBUNTU_COUN
 - **ProLiant cannot ping `10.0.253.11`.** Expected without `cyber-shim`. Use `docker exec` or `sudo ./scripts/lab-veth.sh`.
 - **Ubuntu exits immediately.** Set `SSH_PUBLIC_KEY` or `SSH_PASSWORD`. `docker compose logs ubuntu01`.
 - **kali111 `nameserver 192.168.200.1` / names fail.** NM leftover on the pair NIC; that address is not in the lab. `sudo ./scripts/lab-veth.sh`, then `docker exec kali111 cat /etc/resolv.conf` should show `127.0.0.11`. Do not recreate Kali. Do not restart dnsmasq.
-- **Cannot SSH ctfd.** `DESKTOP_PASSWORD` in `.env`, then `docker compose up -d --no-deps ctfd`. From a lab PC `ssh van@10.0.253.43`. Do not `lab.sh on`/`off`.
+- **Cannot SSH ctfd.** Set `CTFD_PASSWORD` in `.env` (required). Then `docker compose up -d --no-deps ctfd`. From a lab PC `ssh ctfd@10.0.253.43`. Do not `lab.sh on`/`off`.
 - **Names do not resolve.** `./scripts/lab.sh dns-on`.
 - **`known_hosts` mismatch.** 02:00 replaced host keys.
 - **Certificate warning.** Export the CA again.

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Create the CTFd admin once. Empty CTFD_ADMIN_PASSWORD skips. Failures
-must not block sshd (the wrapper ignores a non-zero exit)."""
+"""Create the CTFd web admin once from CTFD_USER / CTFD_PASSWORD.
+Empty CTFD_PASSWORD skips. Failures must not block sshd."""
 import os
 import sys
 
 os.chdir("/opt/CTFd")
 sys.path.insert(0, "/opt/CTFd")
 
-password = os.environ.get("CTFD_ADMIN_PASSWORD") or ""
+password = os.environ.get("CTFD_PASSWORD") or ""
 if not password:
     raise SystemExit(0)
 
-name = os.environ.get("CTFD_ADMIN_NAME") or "admin"
-email = os.environ.get("CTFD_ADMIN_EMAIL") or "admin@cybersecurity.lan"
+name = os.environ.get("CTFD_USER") or "ctfd"
+email = os.environ.get("CTFD_ADMIN_EMAIL") or "ctfd@cybersecurity.lan"
 
 from CTFd import create_app
 from CTFd.models import Users, db
