@@ -136,6 +136,7 @@ start_ctfd() {
   fi
   printf '%s\n' "$secret" > "$data/secret_key"
   chmod 600 "$data/secret_key" || true
+  export CTFD_SECRET_KEY="$secret"
   export SECRET_KEY="$secret"
   export DATABASE_URL="${DATABASE_URL:-sqlite:////home/${SSH_USER}/ctfd.db}"
   export UPLOAD_FOLDER="${UPLOAD_FOLDER:-/home/${SSH_USER}/uploads}"

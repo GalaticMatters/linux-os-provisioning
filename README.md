@@ -309,6 +309,8 @@ findmnt /var/lib/cybersecurity/ubuntu100
 sudo mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd
 # .env: CTFD_USER=ctfd, CTFD_PASSWORD, CTFD_SECRET_KEY  (do not commit .env)
 docker compose up -d --no-deps --force-recreate ctfd
+docker compose exec ctfd printenv CTFD_SECRET_KEY
+# same value as CTFD_SECRET_KEY in .env (do not commit .env)
 docker exec ctfd ls -la /home/ctfd
 ```
 
@@ -478,6 +480,7 @@ Re-run [`scripts/render.py`](scripts/render.py) after `KALI_COUNT`, `UBUNTU_COUN
 - **Ubuntu exits immediately.** Set `SSH_PUBLIC_KEY` or `SSH_PASSWORD`. `docker compose logs ubuntu01`.
 - **kali111 `nameserver 192.168.200.1` / names fail.** NM leftover on the pair NIC; that address is not in the lab. `sudo ./scripts/lab-veth.sh`, then `docker exec kali111 cat /etc/resolv.conf` should show `127.0.0.11`. Do not recreate Kali. Do not restart dnsmasq.
 - **Cannot SSH ctfd.** Set `CTFD_PASSWORD` in `.env` (required). Then `docker compose up -d --no-deps ctfd`. From a lab PC `ssh ctfd@10.0.253.43`. Do not `lab.sh on`/`off`.
+- **`printenv CTFD_SECRET_KEY` empty after recreate.** Compose reads `.env` via `env_file` on ctfd. Pull, `docker compose up -d --no-deps --force-recreate ctfd`, then `docker compose exec ctfd printenv CTFD_SECRET_KEY` must match `.env`. Do not commit `.env`. Do not `lab.sh on`/`off`. Do not restart dnsmasq.
 - **`/home/ctfd` empty / flags not on the ubuntu100 disk.** Bind is host `/var/lib/cybersecurity/ubuntu100/ctfd` → `/home/ctfd`. `findmnt /var/lib/cybersecurity/ubuntu100` must show the loop img, then `sudo mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd`, then `docker compose up -d --no-deps --force-recreate ctfd`. Do not mkdir that subdir if the disk is not mounted. Do not `lab.sh on`/`off`. Do not restart dnsmasq. `docker exec ctfd ls -la /home/ctfd`.
 - **Names do not resolve.** `./scripts/lab.sh dns-on`.
 - **`known_hosts` mismatch.** 02:00 replaced host keys.

@@ -1230,21 +1230,26 @@ services:
     stop_grace_period: 10s
     cap_add:
       - NET_ADMIN
+    env_file:
+      - .env
     environment:
       SSH_USER: ${CTFD_USER:-ctfd}
       SSH_PASSWORD: ${CTFD_PASSWORD:-}
-      CTFD_USER: ${CTFD_USER:-ctfd}
-      CTFD_PASSWORD: ${CTFD_PASSWORD:-}
       TZ: ${TZ:-UTC}
       LAN_ADDR: 10.0.253.43
       LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}
       UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}
       UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}
-      CTFD_SECRET_KEY: ${CTFD_SECRET_KEY:-}
       CTFD_ADMIN_EMAIL: ${CTFD_ADMIN_EMAIL:-ctfd@cybersecurity.lan}
-      SECRET_KEY: ${CTFD_SECRET_KEY:-}
       DATABASE_URL: sqlite:////home/${CTFD_USER:-ctfd}/ctfd.db
       UPLOAD_FOLDER: /home/${CTFD_USER:-ctfd}/uploads
+      SSH_PUBLIC_KEY: ""
+      DESKTOP_PASSWORD: ""
+      DEREK_PASSWORD: ""
+      VYAS_PASSWORD: ""
+      SANG_PASSWORD: ""
+      ASHRAFUL_PASSWORD: ""
+      CLOUDFLARE_TUNNEL_TOKEN: ""
     volumes:
       - type: bind
         source: /var/lib/cybersecurity/ubuntu100/ctfd

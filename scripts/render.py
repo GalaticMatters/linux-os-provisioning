@@ -868,21 +868,31 @@ def render_compose(
         "    stop_grace_period: 10s",
         "    cap_add:",
         "      - NET_ADMIN",
+        # env_file copies CTFD_USER / CTFD_PASSWORD / CTFD_SECRET_KEY from
+        # .env into the Kata guest. Do not also set those three with
+        # ${CTFD_SECRET_KEY:-} here: an empty interpolation overrides the
+        # file and printenv is blank. Other .env secrets are blanked so
+        # this SSH box does not inherit them. .env stays gitignored.
+        "    env_file:",
+        "      - .env",
         "    environment:",
         "      SSH_USER: ${CTFD_USER:-ctfd}",
         "      SSH_PASSWORD: ${CTFD_PASSWORD:-}",
-        "      CTFD_USER: ${CTFD_USER:-ctfd}",
-        "      CTFD_PASSWORD: ${CTFD_PASSWORD:-}",
         "      TZ: ${TZ:-UTC}",
         f"      LAN_ADDR: {CTFD_IP}",
         "      LAN_GATEWAY: ${LAN_GATEWAY:-10.0.253.1}",
         "      UPSTREAM_DNS_1: ${UPSTREAM_DNS_1:-1.1.1.1}",
         "      UPSTREAM_DNS_2: ${UPSTREAM_DNS_2:-8.8.8.8}",
-        "      CTFD_SECRET_KEY: ${CTFD_SECRET_KEY:-}",
         "      CTFD_ADMIN_EMAIL: ${CTFD_ADMIN_EMAIL:-ctfd@cybersecurity.lan}",
-        "      SECRET_KEY: ${CTFD_SECRET_KEY:-}",
         "      DATABASE_URL: sqlite:////home/${CTFD_USER:-ctfd}/ctfd.db",
         "      UPLOAD_FOLDER: /home/${CTFD_USER:-ctfd}/uploads",
+        '      SSH_PUBLIC_KEY: ""',
+        '      DESKTOP_PASSWORD: ""',
+        '      DEREK_PASSWORD: ""',
+        '      VYAS_PASSWORD: ""',
+        '      SANG_PASSWORD: ""',
+        '      ASHRAFUL_PASSWORD: ""',
+        '      CLOUDFLARE_TUNNEL_TOKEN: ""',
         "    volumes:",
         # Same 500 GB loop disk as ubuntu100. Subdir only — do not bind
         # ubuntu100 /config and do not create another .img or named volume.
