@@ -141,6 +141,8 @@ start_ctfd() {
   export DATABASE_URL="${DATABASE_URL:-sqlite:////home/${SSH_USER}/ctfd.db}"
   export UPLOAD_FOLDER="${UPLOAD_FOLDER:-/home/${SSH_USER}/uploads}"
   export FLASK_APP=CTFd
+  export FLASK_DEBUG=0
+  export FLASK_ENV=production
   export SKIP_DB_PING=true
   (
     cd /opt/CTFd
@@ -149,10 +151,15 @@ start_ctfd() {
       /opt/CTFd/.venv/bin/python /usr/local/bin/ctfd-ensure-admin.py || \
         echo "ctfd: admin seed skipped (use the web setup)" >&2
     fi
-    exec /opt/CTFd/.venv/bin/gunicorn 'CTFd:create_app()' \
+    # wsgi:application calls create_app() once at import. Do not use
+    # CTFd:create_app() per request. Do not --reload (alembic/plugins
+    # would run on every hit). workers 1 sync is intentional.
+    exec /opt/CTFd/.venv/bin/gunicorn wsgi:application \
+      --chdir /opt/CTFd \
       --bind 0.0.0.0:8000 \
       --workers 1 \
       --worker-class sync \
+      --timeout 120 \
       --access-logfile "$data/logs/access.log" \
       --error-logfile "$data/logs/error.log"
   ) &

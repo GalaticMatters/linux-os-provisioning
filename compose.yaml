@@ -1256,6 +1256,8 @@ services:
         target: /home/${CTFD_USER:-ctfd}
         bind:
           create_host_path: false
+      - ./ubuntu/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+      - ./ubuntu/ctfd-wsgi.py:/opt/CTFd/wsgi.py:ro
     extra_hosts: *lab-hosts
     networks:
       desktop:
@@ -1264,11 +1266,11 @@ services:
         ipv4_address: 10.0.253.43
     logging: *json-logs
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/22'"]
+      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/8000'"]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 60s
+      start_period: 90s
 
   caddy:
     image: caddy:2.11.7-alpine
