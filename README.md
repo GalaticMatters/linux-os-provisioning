@@ -300,7 +300,7 @@ Caddy on `10.0.253.1` serves `https://kaliNN.cybersecurity.lan`, plus derek, san
 
 ### CTFd
 
-Kata Ubuntu (`cybersecurity-ctfd:1`), `mem_limit: 4g`, desktop + macvlan `10.0.253.43`. sshd `0.0.0.0:22` as `CTFD_USER` (default `ctfd`) with `CTFD_PASSWORD`. gunicorn `:8000`. Not 02:00, not `rebuild`. Does not use `DESKTOP_USER` / `DESKTOP_PASSWORD`.
+Kata Ubuntu (`cybersecurity-ctfd:1`), CTFd **3.8.9**, `mem_limit: 4g`, desktop + macvlan `10.0.253.43`. sshd `0.0.0.0:22` as `CTFD_USER` (default `ctfd`) with `CTFD_PASSWORD`. gunicorn `:8000`. Not 02:00, not `rebuild`. Does not use `DESKTOP_USER` / `DESKTOP_PASSWORD`.
 
 ```sh
 git pull
@@ -308,6 +308,7 @@ findmnt /var/lib/cybersecurity/ubuntu100
 # must be ubuntu100.img. Only then:
 sudo mkdir -p /var/lib/cybersecurity/ubuntu100/ctfd
 # .env: CTFD_USER=ctfd, CTFD_PASSWORD, CTFD_SECRET_KEY  (do not commit .env)
+docker compose build ctfd
 docker compose up -d --no-deps --force-recreate ctfd
 docker compose exec ctfd printenv CTFD_SECRET_KEY
 # same value as CTFD_SECRET_KEY in .env (do not commit .env)

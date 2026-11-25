@@ -864,6 +864,8 @@ def render_compose(
         "    build:",
         "      context: .",
         "      dockerfile: ubuntu/ctfd.Dockerfile",
+        "      args:",
+        "        CTFD_VERSION: \"3.8.9\"",
         "    restart: unless-stopped",
         "    stop_grace_period: 10s",
         "    cap_add:",
