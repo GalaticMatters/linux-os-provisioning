@@ -1,11 +1,9 @@
-"""Gunicorn WSGI target. CTFd has no Flask `db` command; create_app() runs
-alembic/plugins once at import. The callable below must not invoke create_app
-again (that is the 80s-per-hit path)."""
+"""Gunicorn target: Flask app object, created once at import.
+
+Do not expose a WSGI function named application() that gunicorn --factory
+could call per request. CTFd's create_app() runs alembic and plugins; that
+must happen once per process, not once per HTTP hit.
+"""
 from CTFd import create_app
 
 app = create_app()
-
-
-def application(environ, start_response):
-    return app(environ, start_response)
-

@@ -152,14 +152,10 @@ start_ctfd() {
       /opt/CTFd/.venv/bin/python /usr/local/bin/ctfd-ensure-admin.py || \
         echo "ctfd: admin seed skipped (use the web setup)" >&2
     fi
-    exec /opt/CTFd/.venv/bin/gunicorn wsgi:application \
+    exec /opt/CTFd/.venv/bin/gunicorn \
       --chdir /opt/CTFd \
-      --bind 0.0.0.0:8000 \
-      --workers 1 \
-      --worker-class sync \
-      --timeout 120 \
-      --access-logfile "$data/logs/access.log" \
-      --error-logfile "$data/logs/error.log"
+      -c /usr/local/lib/ctfd-gunicorn.conf.py \
+      wsgi:app
   ) &
   echo "ctfd: gunicorn on 0.0.0.0:8000 (data ${data})"
 }

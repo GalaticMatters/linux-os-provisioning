@@ -1258,6 +1258,7 @@ services:
           create_host_path: false
       - ./ubuntu/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
       - ./ubuntu/ctfd-wsgi.py:/opt/CTFd/wsgi.py:ro
+      - ./ubuntu/ctfd-gunicorn.conf.py:/usr/local/lib/ctfd-gunicorn.conf.py:ro
     extra_hosts: *lab-hosts
     networks:
       desktop:
@@ -1266,11 +1267,11 @@ services:
         ipv4_address: 10.0.253.43
     logging: *json-logs
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo >/dev/tcp/127.0.0.1/8000'"]
+      test: ["CMD-SHELL", "curl -sf -o /dev/null --max-time 4 http://127.0.0.1:8000/"]
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 90s
+      start_period: 180s
 
   caddy:
     image: caddy:2.11.7-alpine

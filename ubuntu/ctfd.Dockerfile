@@ -28,6 +28,7 @@ COPY ubuntu/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY ubuntu/kata-net.sh /usr/local/bin/kata-net.sh
 COPY ubuntu/ctfd-ensure-admin.py /usr/local/bin/ctfd-ensure-admin.py
 COPY ubuntu/ctfd-wsgi.py /opt/CTFd/wsgi.py
+COPY ubuntu/ctfd-gunicorn.conf.py /usr/local/lib/ctfd-gunicorn.conf.py
 RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/kata-net.sh /usr/local/bin/ctfd-ensure-admin.py
 
 WORKDIR /opt/CTFd
