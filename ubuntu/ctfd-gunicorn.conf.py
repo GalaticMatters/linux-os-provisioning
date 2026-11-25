@@ -1,10 +1,16 @@
 # Loaded with gunicorn -c. cwd is /opt/CTFd; do not inherit a surprise
 # gunicorn.conf.py. reload must stay false: plugin .pyc writes would
-# otherwise restart the only sync worker and re-run alembic on every hit.
-# timeout 0: official CTFd; a 120s cap SIGABRT'd the worker (~123s curls).
+# otherwise restart the process and re-run alembic on every hit.
+# timeout 0: a 120s cap SIGABRT'd the worker (~123s curls).
+#
+# gthread, one worker: after login the theme holds GET /events (SSE).
+# A sync worker served only that connection, so the next curl waited
+# until gunicorn killed it (~120s). Threads share one create_app(); do
+# not add a second worker (that would boot alembic/plugins twice).
 bind = "0.0.0.0:8000"
 workers = 1
-worker_class = "sync"
+threads = 8
+worker_class = "gthread"
 timeout = 0
 graceful_timeout = 30
 keepalive = 5
