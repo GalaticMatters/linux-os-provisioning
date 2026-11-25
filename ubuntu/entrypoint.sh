@@ -146,14 +146,12 @@ start_ctfd() {
   export SKIP_DB_PING=true
   (
     cd /opt/CTFd
-    /opt/CTFd/.venv/bin/flask db upgrade || echo "ctfd: flask db upgrade failed" >&2
+    # CTFd has no Flask `db` command. create_app() inside wsgi.py runs
+    # CTFd's own alembic once. Do not flask db upgrade.
     if [ -f /usr/local/bin/ctfd-ensure-admin.py ]; then
       /opt/CTFd/.venv/bin/python /usr/local/bin/ctfd-ensure-admin.py || \
         echo "ctfd: admin seed skipped (use the web setup)" >&2
     fi
-    # wsgi:application calls create_app() once at import. Do not use
-    # CTFd:create_app() per request. Do not --reload (alembic/plugins
-    # would run on every hit). workers 1 sync is intentional.
     exec /opt/CTFd/.venv/bin/gunicorn wsgi:application \
       --chdir /opt/CTFd \
       --bind 0.0.0.0:8000 \
